@@ -2,650 +2,633 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0a0a14">
-<title>LiquidPlay | پلیر فیلم و نمایش عکس</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<title>LiquidPlay</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&family=Estedad:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Tahoma&family=Arial&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="dark">
 
-<!-- ==================== پس‌زمینه پارالاکس ==================== -->
-<div class="bg-parallax" aria-hidden="true">
-  <div class="bg-orb bg-orb-1"></div>
-  <div class="bg-orb bg-orb-2"></div>
-  <div class="bg-orb bg-orb-3"></div>
-  <div class="bg-grid"></div>
+<!-- ============ پیام چرخش (فقط عمودی) ============ -->
+<div class="rotate-prompt" id="rotatePrompt">
+  <div class="rotate-inner">
+    <div class="rotate-phone">
+      <svg viewBox="0 0 24 24" width="64" height="64"><rect x="7" y="2" width="10" height="20" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+    <h2>گوشی رو افقی کن</h2>
+    <p>برای بهترین تجربه، گوشی رو بچرخون</p>
+    <button class="btn-primary" id="rotateLockBtn">چرخش خودکار</button>
+  </div>
 </div>
 
-<!-- ==================== اپ شل ==================== -->
+<!-- ============ دکمه ورود تمامصفحه ============ -->
+<div class="fs-gate" id="fsGate">
+  <div class="fs-gate-inner">
+    <span class="fs-logo">LiquidPlay</span>
+    <button class="fs-enter-btn" id="fsEnterBtn">
+      <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>ورود به حالت تمامصفحه</span>
+    </button>
+    <button class="fs-skip-btn" id="fsSkipBtn">ادامه بدون تمامصفحه</button>
+  </div>
+</div>
+
+<!-- ============ اپ اصلی ============ -->
 <div class="app" id="app">
 
-  <!-- ============ هدر ============ -->
-  <header class="app-header glass" id="appHeader">
-    <button class="icon-btn" id="sidebarToggleBtn" title="نمایش پلی‌لیست" aria-label="نمایش پلی‌لیست">
-      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 6h18M3 12h18M3 18h12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+  <!-- ====== نوار بالا مینیمال ====== -->
+  <header class="topbar" id="topbar">
+    <button class="tb-icon" id="menuBtn" aria-label="منو">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
     </button>
-
-    <a href="#" class="app-logo" id="logoHome">
-      <span class="logo-mark"></span>
-      <span class="logo-text">LiquidPlay</span>
-    </a>
-
-    <nav class="app-nav" id="appNav">
-      <button class="nav-btn active" data-view="player">پلیر</button>
-      <button class="nav-btn" data-view="gallery">گالری</button>
-      <button class="nav-btn" data-view="upload">افزودن</button>
-    </nav>
-
-    <div class="header-actions">
-      <button class="icon-btn" id="uploadBtn" title="افزودن فایل" aria-label="افزودن فایل">
+    <span class="tb-logo">LiquidPlay</span>
+    <div class="tb-actions">
+      <button class="tb-icon" id="uploadBtn" aria-label="افزودن">
         <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
       </button>
-
-      <button class="icon-btn" id="shortcutsBtn" title="میانبرهای کیبورد" aria-label="میانبرهای کیبورد">
-        <svg viewBox="0 0 24 24" width="20" height="20"><rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-      </button>
-
-      <button class="icon-btn" id="themeToggle" title="تغییر تم" aria-label="تغییر تم">
-        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-      </button>
-
-      <button class="icon-btn" id="settingsBtn" title="تنظیمات" aria-label="تنظیمات">
-        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <button class="tb-icon" id="themeBtn" aria-label="تم">
+        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
       </button>
     </div>
   </header>
 
-  <!-- ============ لایه اصلی ============ -->
-  <div class="app-body">
+  <!-- ====== ناحیه اصلی ====== -->
+  <main class="main" id="main">
 
-    <!-- ====== سایدبار پلی‌لیست ====== -->
-    <aside class="sidebar glass" id="playlistSidebar">
-      <div class="sidebar-tabs" id="sidebarTabs">
-        <button class="sidebar-tab active" data-tab="playlist">پلی‌لیست</button>
-        <button class="sidebar-tab" data-tab="history">تاریخچه</button>
-        <button class="sidebar-tab" data-tab="bookmarks">بوک‌مارک</button>
-        <button class="sidebar-tab" data-tab="notes">یادداشت</button>
-      </div>
+    <!-- ========== صفحه پلیر ========== -->
+    <section class="view view-player active" id="viewPlayer">
+      <div class="video-stage" id="videoStage">
 
-      <div class="sidebar-tools">
-        <div class="search-input-wrap">
-          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-          <input type="text" id="playlistSearch" placeholder="جستجو..." autocomplete="off">
+        <video id="videoPlayer" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video>
+
+        <!-- لایه رندر زیرنویس کاستوم -->
+        <div class="subtitle-layer" id="subtitleLayer" aria-live="polite"></div>
+
+        <!-- افکت نیم‌دایره‌ای توقف -->
+        <div class="pause-blur" id="pauseBlur" aria-hidden="true"></div>
+
+        <!-- ناحیه ژست -->
+        <div class="gesture-zone gesture-left" id="gestureLeft" aria-hidden="true"></div>
+        <div class="gesture-zone gesture-right" id="gestureRight" aria-hidden="true"></div>
+
+        <!-- شاخص ژست -->
+        <div class="gesture-indicator" id="gestureIndicator">
+          <span class="gi-icon" id="gestureIcon"></span>
+          <span class="gi-value" id="gestureValue"></span>
         </div>
-        <select class="mini-select" id="playlistSort" title="مرتب‌سازی">
-          <option value="manual">دستی</option>
-          <option value="name">نام</option>
-          <option value="duration">مدت</option>
-          <option value="date">تاریخ</option>
-          <option value="size">حجم</option>
-        </select>
-      </div>
 
-      <div class="sidebar-list" id="playlistList">
-        <div class="empty-state" id="playlistEmpty">
-          <p>پلی‌لیستت خالیه</p>
-          <button class="btn btn-primary" id="addFirstFileBtn">افزودن فایل</button>
-        </div>
-      </div>
+        <!-- ==================== HUD ==================== -->
+        <div class="hud" id="hud" data-state="visible">
 
-      <div class="sidebar-footer">
-        <span class="sidebar-count" id="playlistCount">0 فایل</span>
-        <button class="mini-btn" id="clearPlaylistBtn" title="پاک‌سازی">پاک‌سازی</button>
-      </div>
-    </aside>
+          <!-- نوار بالا HUD -->
+          <div class="hud-top">
+            <div class="hud-title-wrap">
+              <span class="hud-title" id="hudTitle">فایلی انتخاب نشده</span>
+              <span class="hud-subtitle" id="hudSubtitle"></span>
+            </div>
+            <div class="hud-top-actions">
+              <button class="hud-icon" id="hudMiniBtn" aria-label="حالت مینی">
+                <svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="12" y="12" width="7" height="6" rx="1" fill="currentColor"/></svg>
+              </button>
+              <button class="hud-icon" id="hudCloseBtn" aria-label="بستن">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </div>
 
-    <!-- ====== ناحیه اصلی ====== -->
-    <main class="main-area" id="mainArea">
-
-      <!-- ==== نمایش پلیر ==== -->
-      <section class="view view-player active" id="viewPlayer">
-
-        <div class="video-wrapper" id="videoWrapper">
-          <video id="videoPlayer" playsinline preload="metadata"></video>
-
-          <!-- افکت نیم‌دایره‌ای توقف -->
-          <div class="pause-blur" id="pauseBlur" aria-hidden="true"></div>
-
-          <!-- آیکون بزرگ پخش -->
-          <button class="big-play-btn" id="bigPlayBtn" aria-label="پخش">
-            <svg viewBox="0 0 24 24" width="40" height="40"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          <!-- دکمه بزرگ وسط -->
+          <button class="hud-center-play" id="hudCenterPlay" aria-label="پخش">
+            <svg viewBox="0 0 24 24" width="44" height="44" id="hudCenterIcon"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
           </button>
 
-          <!-- اورلی بالا -->
-          <div class="video-top-overlay" id="videoTopOverlay">
-            <div class="video-title-wrap">
-              <span class="video-title" id="videoTitle">هیچ ویدیویی پخش نمی‌شه</span>
-              <span class="video-meta" id="videoMeta"></span>
-            </div>
-            <div class="video-top-actions">
-              <button class="icon-btn-sm" id="miniModeBtn" title="حالت مینی" aria-label="حالت مینی">
-                <svg viewBox="0 0 24 24" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="12" y="12" width="7" height="6" rx="1" fill="currentColor"/></svg>
-              </button>
-              <button class="icon-btn-sm" id="closeVideoBtn" title="بستن" aria-label="بستن ویدیو">
-                <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-              </button>
-            </div>
-          </div>
+          <!-- نوار پایین HUD -->
+          <div class="hud-bottom">
 
-          <!-- ژست‌ها -->
-          <div class="gesture-zone gesture-left" id="gestureLeft" aria-hidden="true"></div>
-          <div class="gesture-zone gesture-right" id="gestureRight" aria-hidden="true"></div>
-
-          <!-- شاخص‌های ژست -->
-          <div class="gesture-indicator" id="gestureIndicator">
-            <span class="gesture-icon" id="gestureIcon"></span>
-            <span class="gesture-value" id="gestureValue"></span>
-          </div>
-        </div>
-
-        <!-- ====== نوار کنترل اصلی ====== -->
-        <div class="controls-bar glass" id="controlsBar">
-
-          <!-- نوار تایم Liquid Glass -->
-          <div class="timeline-wrap" id="timelineWrap">
-            <div class="timeline-preview" id="timelinePreview" aria-hidden="true">
-              <canvas class="timeline-preview-canvas" id="timelinePreviewCanvas" width="160" height="90"></canvas>
-              <span class="timeline-preview-time" id="timelinePreviewTime">0:00</span>
-            </div>
-            <div class="timeline" id="timeline" role="slider" aria-label="نوار زمان" tabindex="0">
-              <div class="timeline-track">
-                <div class="timeline-buffer" id="timelineBuffer"></div>
-                <div class="timeline-progress" id="timelineProgress">
-                  <div class="timeline-glow" aria-hidden="true"></div>
+            <!-- ردیف تایم -->
+            <div class="hud-time-row">
+              <span class="hud-time-current" id="hudTimeCurrent">0:00</span>
+              <div class="hud-timeline" id="hudTimeline">
+                <div class="ht-track">
+                  <div class="ht-buffer" id="htBuffer"></div>
+                  <div class="ht-progress" id="htProgress"></div>
+                  <div class="ht-ab" id="htAB"></div>
+                  <div class="ht-marks" id="htMarks"></div>
                 </div>
-                <div class="timeline-ab" id="timelineAB" aria-hidden="true"></div>
-                <div class="timeline-bookmarks" id="timelineBookmarks" aria-hidden="true"></div>
-              </div>
-              <div class="timeline-thumb" id="timelineThumb" aria-hidden="true"></div>
-            </div>
-          </div>
-
-          <!-- ردیف کنترل‌ها -->
-          <div class="controls-row">
-
-            <!-- سمت راست (RTL) -->
-            <div class="controls-group controls-group-start">
-              <button class="ctrl-btn" id="playPauseBtn" title="پخش / توقف (Space)" aria-label="پخش / توقف">
-                <svg viewBox="0 0 24 24" width="22" height="22" id="playPauseIcon"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="prevBtn" title="قبلی" aria-label="قبلی">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6v12M20 6l-10 6 10 6z" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="rewindBtn" title="عقب ۱۰ ثانیه" aria-label="عقب">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M11 12l7-7v14l-7-7zM4 5v14" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="forwardBtn" title="جلو ۱۰ ثانیه" aria-label="جلو">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M13 12l-7 7V5l7 7zM20 5v14" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="nextBtn" title="بعدی" aria-label="بعدی">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 6v12M4 6l10 6-10 6z" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
-              </button>
-
-              <!-- صدا -->
-              <div class="volume-wrap">
-                <button class="ctrl-btn" id="muteBtn" title="قطع صدا (M)" aria-label="قطع صدا">
-                  <svg viewBox="0 0 24 24" width="20" height="20" id="volumeIcon"><path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-                </button>
-                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.01" value="1" aria-label="میزان صدا">
-              </div>
-
-              <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
-            </div>
-
-            <!-- سمت چپ (RTL) -->
-            <div class="controls-group controls-group-end">
-
-              <button class="ctrl-btn" id="screenshotBtn" title="عکس‌برداری از فریم" aria-label="عکس‌برداری">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="bookmarkBtn" title="افزودن بوک‌مارک" aria-label="بوک‌مارک">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v17l-6-4-6 4V4z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="noteBtn" title="یادداشت در این لحظه" aria-label="یادداشت">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 4h11l5 5v11H4z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/><path d="M15 4v5h5M8 14h8M8 17h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="subtitleBtn" title="زیرنویس" aria-label="زیرنویس">
-                <svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M7 15h4M13 15h4M7 12h2M11 12h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="loopBtn" title="پخش حلقه‌ای" aria-label="حلقه">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M17 3l3 3-3 3M7 21l-3-3 3-3M20 6H8a5 5 0 0 0-5 5v2M4 18h12a5 5 0 0 0 5-5v-2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="abLoopBtn" title="تکرار A-B" aria-label="تکرار ای بی">
-                <svg viewBox="0 0 24 24" width="20" height="20"><text x="4" y="16" font-size="10" font-weight="bold" fill="currentColor">AB</text><path d="M14 12h6M18 9l3 3-3 3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-
-              <button class="ctrl-btn" id="filtersBtn" title="تنظیم رنگ و نور" aria-label="فیلترها">
-                <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="9" cy="9" r="5" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="5" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-              </button>
-
-              <div class="speed-wrap">
-                <button class="ctrl-btn speed-btn" id="speedBtn" title="سرعت پخش" aria-label="سرعت پخش">
-                  <span id="speedLabel">1x</span>
-                </button>
-                <div class="popup-menu" id="speedMenu">
-                  <button class="popup-item" data-speed="0.25">0.25x</button>
-                  <button class="popup-item" data-speed="0.5">0.5x</button>
-                  <button class="popup-item" data-speed="0.75">0.75x</button>
-                  <button class="popup-item active" data-speed="1">1x</button>
-                  <button class="popup-item" data-speed="1.25">1.25x</button>
-                  <button class="popup-item" data-speed="1.5">1.5x</button>
-                  <button class="popup-item" data-speed="2">2x</button>
-                  <button class="popup-item" data-speed="3">3x</button>
+                <div class="ht-thumb" id="htThumb"></div>
+                <!-- پیش‌نمایش فریم -->
+                <div class="ht-preview" id="htPreview">
+                  <canvas id="htPreviewCanvas" width="160" height="90"></canvas>
+                  <span class="ht-preview-time" id="htPreviewTime">0:00</span>
                 </div>
               </div>
+              <span class="hud-time-total" id="hudTimeTotal">0:00</span>
+            </div>
 
-              <button class="ctrl-btn" id="rotateBtn" title="چرخش" aria-label="چرخش">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 12a8 8 0 0 1 13-6.2L20 8M20 12a8 8 0 0 1-13 6.2L4 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M20 4v4h-4M4 20v-4h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
+            <!-- ردیف دکمه‌ها -->
+            <div class="hud-controls">
 
-              <button class="ctrl-btn" id="mirrorBtn" title="آینه‌ای کردن" aria-label="آینه‌ای">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3v18M8 7l-4 5 4 5M16 7l4 5-4 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
+              <!-- راست (RTL) -->
+              <div class="hud-group">
+                <button class="hud-btn" id="hudRewind" aria-label="عقب">
+                  <svg viewBox="0 0 24 24" width="22" height="22"><path d="M11 12l7-7v14l-7-7zM4 5v14" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
+                  <span class="hud-btn-badge">10</span>
+                </button>
 
-              <button class="ctrl-btn" id="pipBtn" title="تصویر در تصویر" aria-label="تصویر در تصویر">
-                <svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/></svg>
-              </button>
+                <button class="hud-btn hud-btn-play" id="hudPlay" aria-label="پخش/توقف">
+                  <svg viewBox="0 0 24 24" width="26" height="26" id="hudPlayIcon"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+                </button>
 
-              <button class="ctrl-btn" id="sleepTimerBtn" title="تایمر خواب" aria-label="تایمر خواب">
-                <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="13" r="8" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 9v4l3 2M9 3h6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-              </button>
+                <button class="hud-btn" id="hudForward" aria-label="جلو">
+                  <svg viewBox="0 0 24 24" width="22" height="22"><path d="M13 12l-7 7V5l7 7zM20 5v14" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
+                  <span class="hud-btn-badge">10</span>
+                </button>
 
-              <button class="ctrl-btn" id="fullscreenBtn" title="تمام‌صفحه (F)" aria-label="تمام‌صفحه">
-                <svg viewBox="0 0 24 24" width="20" height="20" id="fullscreenIcon"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <button class="hud-btn" id="hudPrev" aria-label="قبلی">
+                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6v12M20 6l-10 6 10 6z" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
+                </button>
+
+                <button class="hud-btn" id="hudNext" aria-label="بعدی">
+                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 6v12M4 6l10 6-10 6z" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+
+              <!-- چپ (RTL) -->
+              <div class="hud-group">
+                <button class="hud-btn" id="hudSubtitle" aria-label="زیرنویس">
+                  <svg viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M7 15h4M13 15h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+                </button>
+
+                <button class="hud-btn" id="hudSettings" aria-label="تنظیمات">
+                  <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+
+                <button class="hud-btn" id="hudFullscreen" aria-label="تمام‌صفحه">
+                  <svg viewBox="0 0 24 24" width="22" height="22" id="hudFsIcon"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== پنل تنظیمات HUD ==================== -->
+          <div class="hud-settings" id="hudSettings">
+            <div class="hs-head">
+              <h3>تنظیمات پخش</h3>
+              <button class="hud-icon" id="hsClose" aria-label="بستن">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
               </button>
             </div>
 
-          </div>
-        </div>
+            <div class="hs-tabs" id="hsTabs">
+              <button class="hs-tab active" data-tab="playback">پخش</button>
+              <button class="hs-tab" data-tab="subtitle">زیرنویس</button>
+              <button class="hs-tab" data-tab="tools">ابزارها</button>
+              <button class="hs-tab" data-tab="appearance">ظاهر</button>
+            </div>
 
-        <!-- اطلاعات اضافی زیر پلیر -->
-        <div class="player-extra" id="playerExtra">
-          <div class="extra-card glass">
-            <span class="extra-label">وضعیت</span>
-            <span class="extra-value" id="extraStatus">آماده</span>
-          </div>
-          <div class="extra-card glass">
-            <span class="extra-label">سرعت</span>
-            <span class="extra-value" id="extraSpeed">1x</span>
-          </div>
-          <div class="extra-card glass">
-            <span class="extra-label">کیفیت</span>
-            <span class="extra-value" id="extraQuality">-</span>
-          </div>
-          <div class="extra-card glass">
-            <span class="extra-label">تماشا شده</span>
-            <span class="extra-value" id="extraWatched">0 دقیقه</span>
-          </div>
-        </div>
+            <div class="hs-body">
 
-      </section>
+              <!-- تب پخش -->
+              <div class="hs-pane active" data-pane="playback">
+                <div class="hs-row">
+                  <label>سرعت پخش</label>
+                  <div class="hs-chips" id="speedChips">
+                    <button data-speed="0.25">0.25×</button>
+                    <button data-speed="0.5">0.5×</button>
+                    <button data-speed="0.75">0.75×</button>
+                    <button data-speed="1" class="active">1×</button>
+                    <button data-speed="1.25">1.25×</button>
+                    <button data-speed="1.5">1.5×</button>
+                    <button data-speed="2">2×</button>
+                    <button data-speed="3">3×</button>
+                  </div>
+                </div>
 
-      <!-- ==== نمایش گالری عکس ==== -->
-      <section class="view view-gallery" id="viewGallery">
-        <div class="gallery-header glass">
-          <h2 class="section-title">گالری عکس</h2>
-          <div class="gallery-tools">
-            <button class="mini-btn" id="gallerySlideShowBtn">اسلایدشو</button>
-            <select class="mini-select" id="gallerySort">
-              <option value="date">تاریخ</option>
-              <option value="name">نام</option>
-              <option value="size">حجم</option>
-            </select>
-          </div>
-        </div>
-        <div class="gallery-grid" id="galleryGrid"></div>
-        <div class="empty-state" id="galleryEmpty">
-          <p>هنوز عکسی اضافه نکردی</p>
-          <button class="btn btn-primary" id="addFirstPhotoBtn">افزودن عکس</button>
-        </div>
-      </section>
+                <div class="hs-row">
+                  <label>ولوم <span class="hs-val" id="volVal">100%</span></label>
+                  <input type="range" id="volSlider" min="0" max="1" step="0.01" value="1">
+                </div>
 
-      <!-- ==== نمایش آپلود / خوش‌آمد ==== -->
-      <section class="view view-upload" id="viewUpload">
-        <div class="drop-zone glass" id="dropZone">
-          <div class="drop-icon">
-            <svg viewBox="0 0 24 24" width="60" height="60"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <h2 class="drop-title">فایل‌هات رو اینجا بنداز</h2>
-          <p class="drop-sub">ویدیو و عکس رو از حافظه‌ی داخلی انتخاب کن. هیچ آپلودی به اینترنت انجام نمی‌شه.</p>
-          <div class="drop-actions">
-            <button class="btn btn-primary" id="pickVideoBtn">انتخاب ویدیو</button>
-            <button class="btn btn-outline" id="pickImageBtn">انتخاب عکس</button>
-            <button class="btn btn-outline" id="pickFolderBtn">انتخاب پوشه</button>
-          </div>
-          <p class="drop-hint">می‌تونی فایل‌ها رو با درگ و دراپ هم اضافه کنی</p>
-        </div>
-      </section>
+                <div class="hs-row hs-row-switch">
+                  <span>پخش حلقه‌ای</span>
+                  <label class="sw"><input type="checkbox" id="loopToggle"><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
 
-    </main>
-  </div>
+                <div class="hs-row hs-row-switch">
+                  <span>پخش خودکار بعدی</span>
+                  <label class="sw"><input type="checkbox" id="autoNextToggle" checked><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
+
+                <div class="hs-row hs-row-switch">
+                  <span>ذخیره محل توقف</span>
+                  <label class="sw"><input type="checkbox" id="rememberToggle" checked><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
+
+                <div class="hs-row">
+                  <label>تکرار A-B</label>
+                  <div class="hs-chips">
+                    <button id="abSetA">ثبت A</button>
+                    <button id="abSetB">ثبت B</button>
+                    <button id="abClear" class="danger">پاک</button>
+                  </div>
+                </div>
+
+                <div class="hs-row">
+                  <label>تایمر خواب</label>
+                  <div class="hs-chips" id="sleepChips">
+                    <button data-sleep="off" class="active">خاموش</button>
+                    <button data-sleep="5">۵د</button>
+                    <button data-sleep="15">۱۵د</button>
+                    <button data-sleep="30">۳۰د</button>
+                    <button data-sleep="60">۶۰د</button>
+                    <button data-sleep="end">آخر ویدیو</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- تب زیرنویس -->
+              <div class="hs-pane" data-pane="subtitle">
+                <div class="hs-row">
+                  <label>فعال بودن زیرنویس</label>
+                  <label class="sw"><input type="checkbox" id="subEnableToggle" checked><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
+
+                <div class="hs-row">
+                  <button class="hs-full-btn" id="loadSubBtn">بارگذاری فایل زیرنویس (srt, vtt, ass)</button>
+                </div>
+
+                <div class="hs-row">
+                  <label>فونت زیرنویس</label>
+                  <select id="subFontSelect" class="hs-select">
+                    <option value="Vazirmatn, sans-serif">وزیرمتن (پیش‌فرض)</option>
+                    <option value="Estedad, sans-serif">استعداد</option>
+                    <option value="Poppins, sans-serif">Poppins</option>
+                    <option value="Rubik, sans-serif">Rubik</option>
+                    <option value="Montserrat, sans-serif">Montserrat</option>
+                    <option value="Roboto, sans-serif">Roboto</option>
+                    <option value="Open Sans, sans-serif">Open Sans</option>
+                    <option value="Inter, sans-serif">Inter</option>
+                    <option value="Atkinson Hyperlegible, sans-serif">Atkinson Hyperlegible</option>
+                    <option value="Noto Sans Arabic, sans-serif">Noto Sans Arabic</option>
+                    <option value="Tahoma, sans-serif">Tahoma</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                  </select>
+                </div>
+
+                <div class="hs-row">
+                  <label>اندازه <span class="hs-val" id="subSizeVal">20</span></label>
+                  <input type="range" id="subSizeSlider" min="12" max="48" value="20">
+                </div>
+
+                <div class="hs-row">
+                  <label>ضخامت <span class="hs-val" id="subWeightVal">700</span></label>
+                  <input type="range" id="subWeightSlider" min="300" max="900" step="100" value="700">
+                </div>
+
+                <div class="hs-row">
+                  <label>رنگ متن</label>
+                  <input type="color" id="subColorInput" value="#ffffff" class="hs-color">
+                </div>
+
+                <div class="hs-row hs-row-switch">
+                  <span>رنگ متضاد خودکار</span>
+                  <label class="sw"><input type="checkbox" id="subAutoContrastToggle"><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
+
+                <div class="hs-row hs-row-switch">
+                  <span>نمایش کادر پشت</span>
+                  <label class="sw"><input type="checkbox" id="subBgToggle" checked><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
+
+                <div class="hs-row">
+                  <label>رنگ کادر</label>
+                  <input type="color" id="subBgColorInput" value="#000000" class="hs-color">
+                </div>
+
+                <div class="hs-row">
+                  <label>شفافیت کادر <span class="hs-val" id="subBgOpacityVal">80%</span></label>
+                  <input type="range" id="subBgOpacitySlider" min="0" max="100" value="80">
+                </div>
+
+                <div class="hs-row">
+                  <label>گردی گوشه <span class="hs-val" id="subRadiusVal">8</span></label>
+                  <input type="range" id="subRadiusSlider" min="0" max="30" value="8">
+                </div>
+
+                <div class="hs-row">
+                  <label>فاصله از پایین <span class="hs-val" id="subPosVal">12</span></label>
+                  <input type="range" id="subPosSlider" min="0" max="40" value="12">
+                </div>
+
+                <div class="hs-row">
+                  <label>پیش‌نمایش</label>
+                  <div class="sub-preview" id="subPreview">نمونه متن زیرنویس</div>
+                </div>
+              </div>
+
+              <!-- تب ابزارها -->
+              <div class="hs-pane" data-pane="tools">
+                <div class="hs-grid">
+                  <button class="hs-tool" id="toolScreenshot">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                    <span>عکس‌برداری</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolBookmark">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v17l-6-4-6 4V4z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>
+                    <span>بوک‌مارک</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolNote">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 4h11l5 5v11H4z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/><path d="M15 4v5h5M8 14h8M8 17h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+                    <span>یادداشت</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolPip">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/></svg>
+                    <span>تصویر در تصویر</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolRotate">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 12a8 8 0 0 1 13-6.2L20 8M20 12a8 8 0 0 1-13 6.2L4 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M20 4v4h-4M4 20v-4h4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span>چرخش</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolMirror">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 3v18M8 7l-4 5 4 5M16 7l4 5-4 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span>آینه</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolFilters">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="9" cy="9" r="5" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="5" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+                    <span>فیلتر رنگ</span>
+                  </button>
+
+                  <button class="hs-tool" id="toolShortcuts">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+                    <span>میانبرها</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- تب ظاهر -->
+              <div class="hs-pane" data-pane="appearance">
+                <div class="hs-row">
+                  <label>تم</label>
+                  <div class="hs-chips" id="themeChips">
+                    <button data-theme="dark" class="active">تاریک</button>
+                    <button data-theme="light">روشن</button>
+                    <button data-theme="auto">خودکار</button>
+                  </div>
+                </div>
+
+                <div class="hs-row">
+                  <label>شفافیت شیشه <span class="hs-val" id="glassOpVal">70%</span></label>
+                  <input type="range" id="glassOpSlider" min="20" max="100" value="70">
+                </div>
+
+                <div class="hs-row">
+                  <label>شدت بلور <span class="hs-val" id="blurVal">8px</span></label>
+                  <input type="range" id="blurSlider" min="0" max="20" value="8">
+                </div>
+
+                <div class="hs-row hs-row-switch">
+                  <span>کاهش انیمیشن</span>
+                  <label class="sw"><input type="checkbox" id="reduceMotionToggle"><span class="sw-track"><span class="sw-thumb"></span></span></label>
+                </div>
+
+                <div class="hs-row">
+                  <button class="hs-full-btn" id="exportSettingsBtn">خروجی تنظیمات</button>
+                </div>
+                <div class="hs-row">
+                  <button class="hs-full-btn" id="importSettingsBtn">ورود تنظیمات</button>
+                </div>
+                <div class="hs-row">
+                  <button class="hs-full-btn danger" id="resetSettingsBtn">بازنشانی همه چیز</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+        <!-- /HUD -->
+
+      </div>
+    </section>
+
+    <!-- ========== صفحه گالری ========== -->
+    <section class="view view-gallery" id="viewGallery">
+      <div class="gallery-top">
+        <h2>گالری عکس</h2>
+        <div class="gallery-tools">
+          <button class="tb-icon" id="gallerySlideBtn" aria-label="اسلایدشو">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          </button>
+          <select class="mini-select" id="gallerySort">
+            <option value="date">تاریخ</option>
+            <option value="name">نام</option>
+            <option value="size">حجم</option>
+          </select>
+        </div>
+      </div>
+      <div class="gallery-grid" id="galleryGrid"></div>
+      <div class="empty-state hidden" id="galleryEmpty">
+        <p>هنوز عکسی اضافه نکردی</p>
+        <button class="btn-primary" id="galleryAddBtn">افزودن عکس</button>
+      </div>
+    </section>
+
+    <!-- ========== صفحه افزودن ========== -->
+    <section class="view view-upload" id="viewUpload">
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24" width="48" height="48"><path d="M12 16V4M6 10l6-6 6 6M4 20h16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h2>فایل‌هات رو بنداز اینجا</h2>
+        <p>ویدیو و عکس از حافظه‌ی داخلی. هیچ آپلودی انجام نمی‌شه.</p>
+        <div class="upload-btns">
+          <button class="btn-primary" id="pickVideoBtn">انتخاب ویدیو</button>
+          <button class="btn-ghost" id="pickImageBtn">انتخاب عکس</button>
+          <button class="btn-ghost" id="pickFolderBtn">انتخاب پوشه</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ====== سایدبار پلی‌لیست (کشویی) ====== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-head">
+      <div class="sb-tabs" id="sbTabs">
+        <button class="sb-tab active" data-tab="playlist">لیست</button>
+        <button class="sb-tab" data-tab="history">تاریخچه</button>
+        <button class="sb-tab" data-tab="marks">بوک‌مارک</button>
+      </div>
+      <button class="tb-icon" id="sidebarClose" aria-label="بستن">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="sb-tools">
+      <input type="text" class="sb-search" id="sbSearch" placeholder="جستجو...">
+      <select class="mini-select" id="sbSort">
+        <option value="manual">دستی</option>
+        <option value="name">نام</option>
+        <option value="duration">مدت</option>
+        <option value="size">حجم</option>
+      </select>
+    </div>
+
+    <div class="sb-list" id="sbList"></div>
+
+    <div class="sb-foot">
+      <span id="sbCount">0 فایل</span>
+      <button class="mini-btn" id="sbClear">پاک‌سازی</button>
+    </div>
+  </aside>
+  <div class="overlay" id="sidebarOverlay"></div>
+
 </div>
+<!-- /app -->
 
-<!-- ==================== نمایش عکس تمام‌صفحه ==================== -->
+<!-- ============ نمایش عکس تمام‌صفحه ============ -->
 <div class="photo-viewer hidden" id="photoViewer">
-  <div class="photo-viewer-backdrop" id="photoViewerBackdrop"></div>
-  <div class="photo-viewer-top glass">
-    <span class="photo-name" id="photoName"></span>
-    <div class="photo-viewer-actions">
-      <button class="icon-btn-sm" id="photoZoomIn" title="زوم +">+</button>
-      <button class="icon-btn-sm" id="photoZoomOut" title="زوم -">-</button>
-      <button class="icon-btn-sm" id="photoRotate" title="چرخش">چرخش</button>
-      <button class="icon-btn-sm" id="photoReset" title="بازنشانی">بازنشانی</button>
-      <button class="icon-btn-sm" id="photoDownload" title="دانلود">دانلود</button>
-      <button class="icon-btn-sm" id="photoClose" title="بستن">×</button>
+  <div class="pv-backdrop" id="pvBackdrop"></div>
+  <div class="pv-top">
+    <span class="pv-name" id="pvName"></span>
+    <div class="pv-actions">
+      <button class="hud-icon" id="pvZoomIn">+</button>
+      <button class="hud-icon" id="pvZoomOut">-</button>
+      <button class="hud-icon" id="pvRotate">چرخش</button>
+      <button class="hud-icon" id="pvReset">ریست</button>
+      <button class="hud-icon" id="pvDownload">ذخیره</button>
+      <button class="hud-icon" id="pvClose">×</button>
     </div>
   </div>
-  <div class="photo-stage" id="photoStage">
-    <img class="photo-img" id="photoImg" alt="">
+  <div class="pv-stage" id="pvStage">
+    <img id="pvImg" alt="">
   </div>
-  <button class="photo-nav photo-nav-prev" id="photoPrev" aria-label="قبلی">‹</button>
-  <button class="photo-nav photo-nav-next" id="photoNext" aria-label="بعدی">›</button>
+  <button class="pv-nav pv-prev" id="pvPrev">‹</button>
+  <button class="pv-nav pv-next" id="pvNext">›</button>
 </div>
 
-<!-- ==================== پنل تنظیمات ==================== -->
-<aside class="settings-panel glass" id="settingsPanel">
-  <div class="panel-head">
-    <h3>تنظیمات</h3>
-    <button class="icon-btn-sm" id="settingsClose" aria-label="بستن">×</button>
-  </div>
-
-  <div class="settings-scroll">
-
-    <div class="settings-group">
-      <h4 class="settings-group-title">ظاهر</h4>
-
-      <div class="settings-row">
-        <label>تم</label>
-        <div class="segmented" id="themeSegment">
-          <button data-theme="light">روشن</button>
-          <button data-theme="dark" class="active">تاریک</button>
-          <button data-theme="auto">خودکار</button>
-        </div>
-      </div>
-
-      <div class="settings-row">
-        <label>شفافیت شیشه <span class="settings-value" id="glassOpacityValue">70%</span></label>
-        <input type="range" id="glassOpacitySlider" min="0" max="100" value="70">
-      </div>
-
-      <div class="settings-row">
-        <label>شدت بلور <span class="settings-value" id="blurIntensityValue">10px</span></label>
-        <input type="range" id="blurIntensitySlider" min="0" max="24" value="10">
-      </div>
-
-      <div class="settings-row">
-        <label>شدت درخشش <span class="settings-value" id="bloomIntensityValue">50%</span></label>
-        <input type="range" id="bloomIntensitySlider" min="0" max="100" value="50">
-      </div>
-
-      <div class="settings-row">
-        <label class="switch-wrap">
-          <input type="checkbox" id="reduceMotionToggle">
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span>کاهش انیمیشن</span>
-        </label>
-      </div>
-
-      <div class="settings-row">
-        <label class="switch-wrap">
-          <input type="checkbox" id="highContrastToggle">
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span>کنتراست بالا</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h4 class="settings-group-title">پخش</h4>
-
-      <div class="settings-row">
-        <label>صدای پیش‌فرض <span class="settings-value" id="defaultVolumeValue">100%</span></label>
-        <input type="range" id="defaultVolumeSlider" min="0" max="1" step="0.01" value="1">
-      </div>
-
-      <div class="settings-row">
-        <label>سرعت پیش‌فرض</label>
-        <select class="mini-select" id="defaultSpeedSelect">
-          <option value="0.5">0.5x</option>
-          <option value="0.75">0.75x</option>
-          <option value="1" selected>1x</option>
-          <option value="1.25">1.25x</option>
-          <option value="1.5">1.5x</option>
-          <option value="2">2x</option>
-        </select>
-      </div>
-
-      <div class="settings-row">
-        <label class="switch-wrap">
-          <input type="checkbox" id="autoPlayToggle">
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span>پخش خودکار</span>
-        </label>
-      </div>
-
-      <div class="settings-row">
-        <label class="switch-wrap">
-          <input type="checkbox" id="autoNextToggle" checked>
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span>پخش خودکار بعدی</span>
-        </label>
-      </div>
-
-      <div class="settings-row">
-        <label class="switch-wrap">
-          <input type="checkbox" id="rememberProgressToggle" checked>
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span>ذخیره‌ی محل توقف</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h4 class="settings-group-title">زیرنویس</h4>
-
-      <div class="settings-row">
-        <label>اندازه <span class="settings-value" id="subtitleSizeValue">20</span></label>
-        <input type="range" id="subtitleSizeSlider" min="12" max="48" value="20">
-      </div>
-
-      <div class="settings-row">
-        <label>رنگ متن</label>
-        <input type="color" id="subtitleColorInput" value="#ffffff">
-      </div>
-
-      <div class="settings-row">
-        <label class="switch-wrap">
-          <input type="checkbox" id="subtitleBgToggle" checked>
-          <span class="switch-track"><span class="switch-thumb"></span></span>
-          <span>پس‌زمینه زیرنویس</span>
-        </label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h4 class="settings-group-title">پشتیبان</h4>
-      <button class="btn btn-outline full-width" id="exportSettingsBtn">خروجی تنظیمات</button>
-      <button class="btn btn-outline full-width" id="importSettingsBtn">ورود تنظیمات</button>
-      <button class="btn btn-outline full-width danger" id="resetSettingsBtn">بازنشانی همه چیز</button>
-    </div>
-
-  </div>
-</aside>
-<div class="drawer-overlay hidden" id="settingsOverlay"></div>
-
-<!-- ==================== مودال میانبرهای کیبورد ==================== -->
-<div class="modal-overlay hidden" id="shortcutsModal">
-  <div class="modal glass">
-    <div class="modal-head">
-      <h3>میانبرهای کیبورد</h3>
-      <button class="icon-btn-sm" data-close-modal="shortcutsModal">×</button>
-    </div>
-    <div class="shortcuts-grid">
-      <div class="shortcut-row"><kbd>Space</kbd><span>پخش / توقف</span></div>
-      <div class="shortcut-row"><kbd>←</kbd><span>عقب ۵ ثانیه</span></div>
-      <div class="shortcut-row"><kbd>→</kbd><span>جلو ۵ ثانیه</span></div>
-      <div class="shortcut-row"><kbd>J</kbd><span>عقب ۱۰ ثانیه</span></div>
-      <div class="shortcut-row"><kbd>L</kbd><span>جلو ۱۰ ثانیه</span></div>
-      <div class="shortcut-row"><kbd>↑</kbd><span>افزایش صدا</span></div>
-      <div class="shortcut-row"><kbd>↓</kbd><span>کاهش صدا</span></div>
-      <div class="shortcut-row"><kbd>M</kbd><span>قطع صدا</span></div>
-      <div class="shortcut-row"><kbd>F</kbd><span>تمام‌صفحه</span></div>
-      <div class="shortcut-row"><kbd>P</kbd><span>تصویر در تصویر</span></div>
-      <div class="shortcut-row"><kbd>+</kbd><span>افزایش سرعت</span></div>
-      <div class="shortcut-row"><kbd>-</kbd><span>کاهش سرعت</span></div>
-      <div class="shortcut-row"><kbd>0-9</kbd><span>پرش به درصد</span></div>
-      <div class="shortcut-row"><kbd>S</kbd><span>عکس‌برداری</span></div>
-      <div class="shortcut-row"><kbd>B</kbd><span>بوک‌مارک</span></div>
-      <div class="shortcut-row"><kbd>N</kbd><span>یادداشت</span></div>
-      <div class="shortcut-row"><kbd>Esc</kbd><span>بستن پنل‌ها</span></div>
-    </div>
-  </div>
-</div>
-
-<!-- ==================== مودال عکس‌برداری ==================== -->
-<div class="modal-overlay hidden" id="screenshotModal">
-  <div class="modal modal-large glass">
-    <div class="modal-head">
-      <h3>عکس گرفته شد</h3>
-      <button class="icon-btn-sm" data-close-modal="screenshotModal">×</button>
-    </div>
-    <div class="screenshot-body">
-      <img id="screenshotPreview" alt="پیش‌نمایش">
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-primary" id="screenshotDownloadBtn">دانلود</button>
-      <button class="btn btn-outline" id="screenshotCopyBtn">کپی در کلیپ‌بورد</button>
-      <button class="btn btn-outline" data-close-modal="screenshotModal">بستن</button>
-    </div>
-  </div>
-</div>
-
-<!-- ==================== مودال افزودن بوک‌مارک ==================== -->
-<div class="modal-overlay hidden" id="bookmarkModal">
-  <div class="modal glass">
+<!-- ============ مودال‌ها ============ -->
+<div class="modal hidden" id="bookmarkModal">
+  <div class="modal-card">
     <div class="modal-head">
       <h3>افزودن بوک‌مارک</h3>
-      <button class="icon-btn-sm" data-close-modal="bookmarkModal">×</button>
+      <button class="hud-icon" data-close-modal="bookmarkModal">×</button>
     </div>
-    <label class="form-label">عنوان بوک‌مارک</label>
-    <input type="text" class="form-input" id="bookmarkNameInput" placeholder="مثلاً: صحنه‌ی خفن">
-    <p class="form-hint">زمان: <span id="bookmarkTimeLabel">0:00</span></p>
+    <input type="text" class="modal-input" id="bookmarkNameInput" placeholder="عنوان بوک‌مارک">
+    <p class="modal-hint">زمان: <span id="bookmarkTimeLabel">0:00</span></p>
     <div class="modal-foot">
-      <button class="btn btn-primary" id="bookmarkSaveBtn">ذخیره</button>
-      <button class="btn btn-outline" data-close-modal="bookmarkModal">انصراف</button>
+      <button class="btn-primary" id="bookmarkSaveBtn">ذخیره</button>
+      <button class="btn-ghost" data-close-modal="bookmarkModal">انصراف</button>
     </div>
   </div>
 </div>
 
-<!-- ==================== مودال یادداشت ==================== -->
-<div class="modal-overlay hidden" id="noteModal">
-  <div class="modal glass">
+<div class="modal hidden" id="noteModal">
+  <div class="modal-card">
     <div class="modal-head">
       <h3>یادداشت</h3>
-      <button class="icon-btn-sm" data-close-modal="noteModal">×</button>
+      <button class="hud-icon" data-close-modal="noteModal">×</button>
     </div>
-    <label class="form-label">متن یادداشت</label>
-    <textarea class="form-input" id="noteTextInput" rows="4" placeholder="چیزی که می‌خوای یادت بمونه..."></textarea>
-    <p class="form-hint">زمان: <span id="noteTimeLabel">0:00</span></p>
+    <textarea class="modal-input" id="noteTextInput" rows="4" placeholder="یادداشتت رو بنویس..."></textarea>
+    <p class="modal-hint">زمان: <span id="noteTimeLabel">0:00</span></p>
     <div class="modal-foot">
-      <button class="btn btn-primary" id="noteSaveBtn">ذخیره</button>
-      <button class="btn btn-outline" data-close-modal="noteModal">انصراف</button>
+      <button class="btn-primary" id="noteSaveBtn">ذخیره</button>
+      <button class="btn-ghost" data-close-modal="noteModal">انصراف</button>
     </div>
   </div>
 </div>
 
-<!-- ==================== مودال تایمر خواب ==================== -->
-<div class="modal-overlay hidden" id="sleepTimerModal">
-  <div class="modal glass">
+<div class="modal hidden" id="screenshotModal">
+  <div class="modal-card modal-wide">
     <div class="modal-head">
-      <h3>تایمر خواب</h3>
-      <button class="icon-btn-sm" data-close-modal="sleepTimerModal">×</button>
+      <h3>عکس گرفته شد</h3>
+      <button class="hud-icon" data-close-modal="screenshotModal">×</button>
     </div>
-    <p class="form-hint">بعد از زمان انتخابی، پخش خودکار متوقف می‌شه.</p>
-    <div class="sleep-options">
-      <button class="btn btn-outline" data-sleep="5">۵ دقیقه</button>
-      <button class="btn btn-outline" data-sleep="15">۱۵ دقیقه</button>
-      <button class="btn btn-outline" data-sleep="30">۳۰ دقیقه</button>
-      <button class="btn btn-outline" data-sleep="60">۶۰ دقیقه</button>
-      <button class="btn btn-outline" data-sleep="end">آخر ویدیو</button>
-      <button class="btn btn-outline danger" data-sleep="off">خاموش</button>
+    <div class="screenshot-body">
+      <img id="screenshotPreview" alt="">
+    </div>
+    <div class="modal-foot">
+      <button class="btn-primary" id="screenshotDownloadBtn">دانلود</button>
+      <button class="btn-ghost" id="screenshotCopyBtn">کپی</button>
     </div>
   </div>
 </div>
 
-<!-- ==================== مودال زیرنویس ==================== -->
-<div class="modal-overlay hidden" id="subtitleModal">
-  <div class="modal glass">
+<div class="modal hidden" id="shortcutsModal">
+  <div class="modal-card modal-wide">
     <div class="modal-head">
-      <h3>زیرنویس</h3>
-      <button class="icon-btn-sm" data-close-modal="subtitleModal">×</button>
+      <h3>میانبرهای کیبورد</h3>
+      <button class="hud-icon" data-close-modal="shortcutsModal">×</button>
     </div>
-    <button class="btn btn-outline full-width" id="loadSubtitleBtn">بارگذاری فایل زیرنویس</button>
-    <p class="form-hint">فرمت‌های پشتیبانی‌شده: srt، vtt، ass</p>
-    <div class="subtitle-list" id="subtitleList"></div>
-    <button class="btn btn-outline full-width danger" id="removeSubtitleBtn">حذف زیرنویس</button>
+    <div class="shortcuts-list">
+      <div class="sc-row"><kbd>Space</kbd><span>پخش / توقف</span></div>
+      <div class="sc-row"><kbd>←</kbd><span>عقب ۵ ثانیه</span></div>
+      <div class="sc-row"><kbd>→</kbd><span>جلو ۵ ثانیه</span></div>
+      <div class="sc-row"><kbd>J</kbd><span>عقب ۱۰ ثانیه</span></div>
+      <div class="sc-row"><kbd>L</kbd><span>جلو ۱۰ ثانیه</span></div>
+      <div class="sc-row"><kbd>↑</kbd><span>افزایش صدا</span></div>
+      <div class="sc-row"><kbd>↓</kbd><span>کاهش صدا</span></div>
+      <div class="sc-row"><kbd>M</kbd><span>قطع صدا</span></div>
+      <div class="sc-row"><kbd>F</kbd><span>تمام‌صفحه</span></div>
+      <div class="sc-row"><kbd>S</kbd><span>عکس‌برداری</span></div>
+      <div class="sc-row"><kbd>B</kbd><span>بوک‌مارک</span></div>
+      <div class="sc-row"><kbd>N</kbd><span>یادداشت</span></div>
+      <div class="sc-row"><kbd>Esc</kbd><span>بستن پنل‌ها</span></div>
+    </div>
   </div>
 </div>
 
-<!-- ==================== مودال فیلترهای تصویری ==================== -->
-<div class="modal-overlay hidden" id="filtersModal">
-  <div class="modal glass">
+<div class="modal hidden" id="filtersModal">
+  <div class="modal-card">
     <div class="modal-head">
       <h3>تنظیم رنگ و نور</h3>
-      <button class="icon-btn-sm" data-close-modal="filtersModal">×</button>
+      <button class="hud-icon" data-close-modal="filtersModal">×</button>
     </div>
-    <div class="settings-row">
-      <label>روشنایی <span class="settings-value" id="filterBrightnessValue">100%</span></label>
-      <input type="range" id="filterBrightness" min="0" max="200" value="100">
+    <div class="filters-body">
+      <label>روشنایی <span id="fBriVal">100%</span></label>
+      <input type="range" id="fBrightness" min="0" max="200" value="100">
+
+      <label>کنتراست <span id="fConVal">100%</span></label>
+      <input type="range" id="fContrast" min="0" max="200" value="100">
+
+      <label>اشباع <span id="fSatVal">100%</span></label>
+      <input type="range" id="fSaturate" min="0" max="200" value="100">
+
+      <label>رنگ‌مایه <span id="fHueVal">0</span></label>
+      <input type="range" id="fHue" min="0" max="360" value="0">
+
+      <label>تاری <span id="fBlurVal">0px</span></label>
+      <input type="range" id="fBlur" min="0" max="10" value="0">
+
+      <button class="hs-full-btn" id="resetFiltersBtn">بازنشانی</button>
     </div>
-    <div class="settings-row">
-      <label>کنتراست <span class="settings-value" id="filterContrastValue">100%</span></label>
-      <input type="range" id="filterContrast" min="0" max="200" value="100">
-    </div>
-    <div class="settings-row">
-      <label>اشباع رنگ <span class="settings-value" id="filterSaturateValue">100%</span></label>
-      <input type="range" id="filterSaturate" min="0" max="200" value="100">
-    </div>
-    <div class="settings-row">
-      <label>رنگ‌مایه <span class="settings-value" id="filterHueValue">0</span></label>
-      <input type="range" id="filterHue" min="0" max="360" value="0">
-    </div>
-    <div class="settings-row">
-      <label>تاری <span class="settings-value" id="filterBlurValue">0px</span></label>
-      <input type="range" id="filterBlur" min="0" max="10" value="0">
-    </div>
-    <button class="btn btn-outline full-width" id="resetFiltersBtn">بازنشانی فیلترها</button>
   </div>
 </div>
 
-<!-- ==================== کانتکست منو ==================== -->
-<div class="context-menu hidden" id="contextMenu">
-  <button class="ctx-item" data-ctx="play">پخش</button>
-  <button class="ctx-item" data-ctx="open-photo">نمایش</button>
-  <button class="ctx-item" data-ctx="remove">حذف از لیست</button>
-  <button class="ctx-item danger" data-ctx="delete">حذف کامل</button>
-</div>
-
-<!-- ==================== توست ==================== -->
+<!-- ============ توست ============ -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<!-- ==================== فایل‌های مخفی ==================== -->
+<!-- ============ ورودی‌های مخفی ============ -->
 <input type="file" id="videoInput" accept="video/*" multiple hidden>
 <input type="file" id="imageInput" accept="image/*" multiple hidden>
 <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
 <input type="file" id="subtitleInput" accept=".srt,.vtt,.ass" hidden>
-<input type="file" id="importSettingsInput" accept=".json" hidden>
+<input type="file" id="importInput" accept=".json" hidden>
 
 <script src="script.js"></script>
 </body>
-          </html>
+  </html>
