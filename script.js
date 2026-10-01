@@ -1,192 +1,260 @@
 /* =====================================================
    LiquidPlay - منطق اصلی
-   همه چیز با Vanilla JS - بدون کتابخانه
+   Vanilla JS - بدون کتابخانه
    ===================================================== */
 
 (function () {
   "use strict";
 
   /* =====================================================
-     ۱) ابزارهای کمکی
+     ابزارها
      ===================================================== */
 
-  const $ = (id) => document.getElementById(id);
-  const $$ = (sel, root) => (root || document).querySelectorAll(sel);
-  const on = (el, ev, fn, opts) => el && el.addEventListener(ev, fn, opts);
+  var $ = function (id) { return document.getElementById(id); };
+  var $$ = function (sel, root) { return (root || document).querySelectorAll(sel); };
+  var on = function (el, ev, fn, opts) {
+    if (el) el.addEventListener(ev, fn, opts);
+  };
 
-  const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+  function clamp(v, a, b) { return Math.min(Math.max(v, a), b); }
 
-  const formatTime = (sec) => {
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function fmtTime(sec) {
     if (!isFinite(sec) || sec < 0) sec = 0;
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = Math.floor(sec % 60);
-    if (h > 0) return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = Math.floor(sec % 60);
+    if (h > 0) {
+      return h + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    }
     return m + ":" + String(s).padStart(2, "0");
-  };
+  }
 
-  const formatBytes = (bytes) => {
+  function fmtBytes(bytes) {
     if (!bytes) return "0 B";
-    const k = 1024;
-    const units = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    var k = 1024;
+    var units = ["B", "KB", "MB", "GB"];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
     return (bytes / Math.pow(k, i)).toFixed(1) + " " + units[i];
-  };
+  }
 
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  function esc(str) {
+    return String(str == null ? "" : str).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
 
-  const isVideoFile = (f) => f && (f.type || "").startsWith("video/") ||
-    /\.(mp4|webm|mkv|mov|avi|m4v|ogv|flv)$/i.test(f.name || "");
+  function isVideoFile(f) {
+    if (!f) return false;
+    if ((f.type || "").indexOf("video/") === 0) return true;
+    return /\.(mp4|webm|mkv|mov|avi|m4v|ogv|flv|3gp)$/i.test(f.name || "");
+  }
 
-  const isImageFile = (f) => f && (f.type || "").startsWith("image/") ||
-    /\.(png|jpg|jpeg|gif|webp|bmp|svg|avif)$/i.test(f.name || "");
+  function isImageFile(f) {
+    if (!f) return false;
+    if ((f.type || "").indexOf("image/") === 0) return true;
+    return /\.(png|jpg|jpeg|gif|webp|bmp|svg|avif)$/i.test(f.name || "");
+  }
 
-  const saveLS = (key, val) => {
+  function saveLS(key, val) {
     try { localStorage.setItem("liquidplay." + key, JSON.stringify(val)); } catch (e) {}
-  };
+  }
 
-  const loadLS = (key, def) => {
+  function loadLS(key, def) {
     try {
-      const raw = localStorage.getItem("liquidplay." + key);
+      var raw = localStorage.getItem("liquidplay." + key);
       return raw ? JSON.parse(raw) : def;
     } catch (e) { return def; }
-  };
+  }
 
   /* =====================================================
-     ۲) توست
+     توست
      ===================================================== */
 
-  const toastWrap = $("toastWrap");
+  var toastWrap = $("toastWrap");
 
-  function toast(msg, type, duration) {
+  function toast(msg, type, dur) {
     if (!toastWrap) return;
     type = type || "info";
-    duration = duration || 2600;
+    dur = dur || 2400;
 
-    const t = document.createElement("div");
+    var t = document.createElement("div");
     t.className = "toast toast-" + type;
     t.textContent = msg;
     toastWrap.appendChild(t);
 
-    setTimeout(() => {
+    setTimeout(function () {
       t.classList.add("removing");
-      setTimeout(() => t.remove(), 400);
-    }, duration);
+      setTimeout(function () { t.remove(); }, 400);
+    }, dur);
   }
 
   /* =====================================================
-     ۳) اپلیکیشن اصلی
+     پارسر زیرنویس
      ===================================================== */
 
-  const App = {
-    /* ---------- state ---------- */
-    playlist: [],        // [{ id, file, url, name, size, duration, thumb, type:'video'|'image' }]
-    currentIndex: -1,
-    gallery: [],         // عکس‌ها
-    bookmarks: {},       // { fileId: [{id,time,name}] }
-    notes: {},           // { fileId: [{id,time,text}] }
-    subtitles: {},       // { fileId: [track] }
-    history: [],         // [{ id, name, watchedAt }]
-    settings: null,
-    abLoop: { a: null, b: null },
-    sleepTimer: null,
-    sleepEndOfVideo: false,
-    isSeeking: false,
-    miniMode: false,
-    subtitlesEnabled: true,
+  function parseSubtitle(text) {
+    var lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    var cues = [];
+    var i = 0;
 
-    /* ---------- DOM refs ---------- */
+    if (lines[0] && lines[0].indexOf("WEBVTT") !== -1) {
+      while (i < lines.length && lines[i].trim() !== "") i++;
+    }
+
+    while (i < lines.length) {
+      while (i < lines.length && lines[i].trim() === "") i++;
+      if (i >= lines.length) break;
+
+      if (/^\d+$/.test(lines[i].trim())) i++;
+      if (i >= lines.length) break;
+
+      var timeLine = lines[i];
+      var m = timeLine.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/);
+      if (!m) { i++; continue; }
+
+      var start = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 1000;
+      var end = (+m[5]) * 3600 + (+m[6]) * 60 + (+m[7]) + (+m[8]) / 1000;
+
+      i++;
+      var textLines = [];
+      while (i < lines.length && lines[i].trim() !== "") {
+        textLines.push(lines[i].trim());
+        i++;
+      }
+
+      cues.push({ start: start, end: end, text: textLines.join("\n") });
+    }
+
+    return cues;
+  }
+
+  /* =====================================================
+     اپلیکیشن
+     ===================================================== */
+
+  var App = {
+    playlist: [],
+    gallery: [],
+    currentIndex: -1,
+    bookmarks: {},
+    notes: {},
+    history: [],
+    subsByFile: {},
+    currentCues: [],
+    currentCueIdx: -1,
+    settings: null,
+    ab: { a: null, b: null },
+    sleepTimer: null,
+    sleepEnd: false,
+    seeking: false,
+    hudTimer: null,
+    hudVisible: true,
+    miniMode: false,
+    lastTapTime: 0,
+    lastTapX: 0,
     dom: {},
 
-    /* =================================================
-       init
-       ================================================= */
-    init() {
+    /* --------------------------------------- */
+    init: function () {
       this.cacheDom();
-      this.loadSettings();
+      this.loadState();
       this.applySettings();
-      this.bindHeader();
+      this.bindFsGate();
+      this.bindRotate();
+      this.bindTopbar();
       this.bindSidebar();
-      this.bindPlayer();
+      this.bindVideo();
+      this.bindHud();
       this.bindTimeline();
-      this.bindControls();
+      this.bindHudSettings();
+      this.bindSubtitlePane();
+      this.bindToolsPane();
+      this.bindAppearancePane();
       this.bindGallery();
       this.bindUpload();
       this.bindPhotoViewer();
-      this.bindSettingsPanel();
       this.bindModals();
       this.bindKeyboard();
       this.bindGestures();
-      this.bindContextMenu();
-      this.bindContextMenuGlobal();
-      this.applyThemeAuto();
-      this.hideBigPlay();
       this.showView("upload");
+      this.applyThemeAuto();
+
       console.log("LiquidPlay ready");
     },
 
-    /* =================================================
-       cacheDom
-       ================================================= */
-    cacheDom() {
-      const ids = [
-        "app","appHeader","sidebarToggleBtn","logoHome","appNav",
-        "uploadBtn","shortcutsBtn","themeToggle","settingsBtn",
-        "playlistSidebar","sidebarTabs","playlistSearch","playlistSort",
-        "playlistList","playlistEmpty","addFirstFileBtn","playlistCount","clearPlaylistBtn",
-        "mainArea","viewPlayer","viewGallery","viewUpload","videoWrapper",
-        "videoPlayer","pauseBlur","bigPlayBtn","videoTopOverlay","videoTitle","videoMeta",
-        "miniModeBtn","closeVideoBtn","gestureLeft","gestureRight","gestureIndicator","gestureIcon","gestureValue",
-        "controlsBar","timelineWrap","timeline","timelineBuffer","timelineProgress","timelineThumb",
-        "timelineAB","timelineBookmarks","timelinePreview","timelinePreviewCanvas","timelinePreviewTime",
-        "playPauseBtn","playPauseIcon","prevBtn","rewindBtn","forwardBtn","nextBtn",
-        "muteBtn","volumeIcon","volumeSlider","timeDisplay",
-        "screenshotBtn","bookmarkBtn","noteBtn","subtitleBtn","loopBtn","abLoopBtn","filtersBtn",
-        "speedBtn","speedLabel","speedMenu","rotateBtn","mirrorBtn","pipBtn","sleepTimerBtn","fullscreenBtn","fullscreenIcon",
-        "extraStatus","extraSpeed","extraQuality","extraWatched","playerExtra",
-        "galleryGrid","galleryEmpty","addFirstPhotoBtn","gallerySlideShowBtn","gallerySort",
-        "dropZone","pickVideoBtn","pickImageBtn","pickFolderBtn",
-        "photoViewer","photoViewerBackdrop","photoName","photoImg","photoStage",
-        "photoPrev","photoNext","photoZoomIn","photoZoomOut","photoRotate","photoReset","photoDownload","photoClose",
-        "settingsPanel","settingsClose","settingsOverlay","themeSegment",
-        "glassOpacitySlider","glassOpacityValue","blurIntensitySlider","blurIntensityValue",
-        "bloomIntensitySlider","bloomIntensityValue","reduceMotionToggle","highContrastToggle",
-        "defaultVolumeSlider","defaultVolumeValue","defaultSpeedSelect",
-        "autoPlayToggle","autoNextToggle","rememberProgressToggle",
-        "subtitleSizeSlider","subtitleSizeValue","subtitleColorInput","subtitleBgToggle",
-        "exportSettingsBtn","importSettingsBtn","resetSettingsBtn",
-        "shortcutsModal","screenshotModal","screenshotPreview","screenshotDownloadBtn","screenshotCopyBtn",
-        "bookmarkModal","bookmarkNameInput","bookmarkTimeLabel","bookmarkSaveBtn",
-        "noteModal","noteTextInput","noteTimeLabel","noteSaveBtn",
-        "sleepTimerModal","subtitleModal","loadSubtitleBtn","subtitleList","removeSubtitleBtn",
-        "filtersModal","filterBrightness","filterBrightnessValue",
-        "filterContrast","filterContrastValue","filterSaturate","filterSaturateValue",
-        "filterHue","filterHueValue","filterBlur","filterBlurValue","resetFiltersBtn",
-        "contextMenu","videoInput","imageInput","folderInput","subtitleInput","importSettingsInput"
+    /* --------------------------------------- */
+    cacheDom: function () {
+      var ids = [
+        "rotatePrompt", "rotateLockBtn",
+        "fsGate", "fsEnterBtn", "fsSkipBtn",
+        "app", "topbar", "menuBtn", "uploadBtn", "themeBtn",
+        "main",
+        "viewPlayer", "viewGallery", "viewUpload",
+        "videoStage", "videoPlayer", "subtitleLayer", "pauseBlur",
+        "gestureLeft", "gestureRight", "gestureIndicator", "gestureIcon", "gestureValue",
+        "hud", "hudTitle", "hudSubtitle", "hudMiniBtn", "hudCloseBtn",
+        "hudCenterPlay", "hudCenterIcon",
+        "hudTimeCurrent", "hudTimeline", "htBuffer", "htProgress", "htAB", "htMarks", "htThumb",
+        "htPreview", "htPreviewCanvas", "htPreviewTime", "hudTimeTotal",
+        "hudRewind", "hudPlay", "hudPlayIcon", "hudForward", "hudPrev", "hudNext",
+        "hudSubtitle", "hudSettings", "hudFullscreen", "hudFsIcon",
+        "hudSettings", "hsClose", "hsTabs",
+        "speedChips", "volSlider", "volVal",
+        "loopToggle", "autoNextToggle", "rememberToggle",
+        "abSetA", "abSetB", "abClear", "sleepChips",
+        "subEnableToggle", "loadSubBtn", "subFontSelect",
+        "subSizeSlider", "subSizeVal", "subWeightSlider", "subWeightVal",
+        "subColorInput", "subAutoContrastToggle", "subBgToggle", "subBgColorInput",
+        "subBgOpacitySlider", "subBgOpacityVal", "subRadiusSlider", "subRadiusVal",
+        "subPosSlider", "subPosVal", "subPreview",
+        "toolScreenshot", "toolBookmark", "toolNote", "toolPip", "toolRotate", "toolMirror", "toolFilters", "toolShortcuts",
+        "themeChips", "glassOpSlider", "glassOpVal", "blurSlider", "blurVal", "reduceMotionToggle",
+        "exportSettingsBtn", "importSettingsBtn", "resetSettingsBtn",
+        "sidebar", "sbTabs", "sidebarClose", "sbSearch", "sbSort", "sbList", "sbCount", "sbClear", "sidebarOverlay",
+        "gallerySlideBtn", "gallerySort", "galleryGrid", "galleryEmpty", "galleryAddBtn",
+        "uploadArea", "pickVideoBtn", "pickImageBtn", "pickFolderBtn",
+        "photoViewer", "pvBackdrop", "pvName", "pvZoomIn", "pvZoomOut", "pvRotate",
+        "pvReset", "pvDownload", "pvClose", "pvStage", "pvImg", "pvPrev", "pvNext",
+        "bookmarkModal", "bookmarkNameInput", "bookmarkTimeLabel", "bookmarkSaveBtn",
+        "noteModal", "noteTextInput", "noteTimeLabel", "noteSaveBtn",
+        "screenshotModal", "screenshotPreview", "screenshotDownloadBtn", "screenshotCopyBtn",
+        "shortcutsModal", "filtersModal",
+        "fBriVal", "fBrightness", "fConVal", "fContrast", "fSatVal", "fSaturate",
+        "fHueVal", "fHue", "fBlurVal", "fBlur", "resetFiltersBtn",
+        "toastWrap",
+        "videoInput", "imageInput", "folderInput", "subtitleInput", "importInput"
       ];
-      ids.forEach((id) => { this.dom[id] = $(id); });
+      var self = this;
+      ids.forEach(function (id) { self.dom[id] = $(id); });
     },
 
-    /* =================================================
-       تنظیمات
-       ================================================= */
-    loadSettings() {
-      const def = {
+    /* --------------------------------------- */
+    loadState: function () {
+      var def = {
         theme: "dark",
         glassOpacity: 70,
-        blurIntensity: 10,
-        bloomIntensity: 50,
+        blurIntensity: 8,
         reduceMotion: false,
-        highContrast: false,
         defaultVolume: 1,
         defaultSpeed: 1,
-        autoPlay: false,
+        loop: false,
         autoNext: true,
         rememberProgress: true,
-        subtitleSize: 20,
-        subtitleColor: "#ffffff",
-        subtitleBg: true,
-        loop: false
+        subEnabled: true,
+        subFont: "Vazirmatn, sans-serif",
+        subSize: 20,
+        subWeight: 700,
+        subColor: "#ffffff",
+        subAutoContrast: false,
+        subBg: true,
+        subBgColor: "#000000",
+        subBgOpacity: 80,
+        subRadius: 8,
+        subPos: 14
       };
       this.settings = Object.assign({}, def, loadLS("settings", {}));
       this.bookmarks = loadLS("bookmarks", {});
@@ -194,379 +262,300 @@
       this.history = loadLS("history", []);
     },
 
-    saveSettings() {
-      saveLS("settings", this.settings);
-    },
+    saveSettings: function () { saveLS("settings", this.settings); },
 
-    applySettings() {
-      const s = this.settings;
-      document.documentElement.style.setProperty("--glass-opacity", (s.glassOpacity / 100).toFixed(2));
-      document.documentElement.style.setProperty("--blur-amount", s.blurIntensity + "px");
-      document.documentElement.style.setProperty("--bloom-strength", (s.bloomIntensity / 100).toFixed(2));
+    /* --------------------------------------- */
+    applySettings: function () {
+      var s = this.settings;
+      var root = document.documentElement;
+
+      root.style.setProperty("--glass-alpha", (s.glassOpacity / 100).toFixed(2));
+      root.style.setProperty("--blur", s.blurIntensity + "px");
+      root.style.setProperty("--sub-size", s.subSize + "px");
+      root.style.setProperty("--sub-weight", s.subWeight);
+      root.style.setProperty("--sub-font", s.subFont);
+      root.style.setProperty("--sub-color", s.subColor);
+      root.style.setProperty("--sub-bg-op", (s.subBgOpacity / 100).toFixed(2));
+      root.style.setProperty("--sub-radius", s.subRadius + "px");
 
       document.body.classList.toggle("reduce-motion", !!s.reduceMotion);
-      document.body.classList.toggle("high-contrast", !!s.highContrast);
 
-      this.setTheme(s.theme);
+      this.setTheme(s.theme, true);
 
-      // سینک کردن UI
-      if (this.dom.glassOpacitySlider) this.dom.glassOpacitySlider.value = s.glassOpacity;
-      if (this.dom.glassOpacityValue) this.dom.glassOpacityValue.textContent = s.glassOpacity + "%";
-      if (this.dom.blurIntensitySlider) this.dom.blurIntensitySlider.value = s.blurIntensity;
-      if (this.dom.blurIntensityValue) this.dom.blurIntensityValue.textContent = s.blurIntensity + "px";
-      if (this.dom.bloomIntensitySlider) this.dom.bloomIntensitySlider.value = s.bloomIntensity;
-      if (this.dom.bloomIntensityValue) this.dom.bloomIntensityValue.textContent = s.bloomIntensity + "%";
-      if (this.dom.reduceMotionToggle) this.dom.reduceMotionToggle.checked = !!s.reduceMotion;
-      if (this.dom.highContrastToggle) this.dom.highContrastToggle.checked = !!s.highContrast;
-      if (this.dom.defaultVolumeSlider) this.dom.defaultVolumeSlider.value = s.defaultVolume;
-      if (this.dom.defaultVolumeValue) this.dom.defaultVolumeValue.textContent = Math.round(s.defaultVolume * 100) + "%";
-      if (this.dom.defaultSpeedSelect) this.dom.defaultSpeedSelect.value = String(s.defaultSpeed);
-      if (this.dom.autoPlayToggle) this.dom.autoPlayToggle.checked = !!s.autoPlay;
-      if (this.dom.autoNextToggle) this.dom.autoNextToggle.checked = !!s.autoNext;
-      if (this.dom.rememberProgressToggle) this.dom.rememberProgressToggle.checked = !!s.rememberProgress;
-      if (this.dom.subtitleSizeSlider) this.dom.subtitleSizeSlider.value = s.subtitleSize;
-      if (this.dom.subtitleSizeValue) this.dom.subtitleSizeValue.textContent = s.subtitleSize;
-      if (this.dom.subtitleColorInput) this.dom.subtitleColorInput.value = s.subtitleColor;
-      if (this.dom.subtitleBgToggle) this.dom.subtitleBgToggle.checked = !!s.subtitleBg;
-
-      // سگمنت تم
-      if (this.dom.themeSegment) {
-        $$(".segmented button", this.dom.themeSegment).forEach((b) => {
-          b.classList.toggle("active", b.dataset.theme === s.theme);
-        });
-      }
-
-      // سرعت پخش پیش‌فرض
-      if (this.dom.videoPlayer) this.dom.videoPlayer.playbackRate = s.defaultSpeed;
-      if (this.dom.speedLabel) this.dom.speedLabel.textContent = s.defaultSpeed + "x";
-      if (this.dom.extraSpeed) this.dom.extraSpeed.textContent = s.defaultSpeed + "x";
+      // همگام‌سازی UI
+      this.syncUI();
     },
 
-    setTheme(mode) {
+    syncUI: function () {
+      var s = this.settings;
+
+      // چیپس تم
+      $$("#themeChips button").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.theme === s.theme);
+      });
+
+      if (this.dom.glassOpSlider) this.dom.glassOpSlider.value = s.glassOpacity;
+      if (this.dom.glassOpVal) this.dom.glassOpVal.textContent = s.glassOpacity + "%";
+      if (this.dom.blurSlider) this.dom.blurSlider.value = s.blurIntensity;
+      if (this.dom.blurVal) this.dom.blurVal.textContent = s.blurIntensity + "px";
+      if (this.dom.reduceMotionToggle) this.dom.reduceMotionToggle.checked = !!s.reduceMotion;
+
+      if (this.dom.volSlider) this.dom.volSlider.value = s.defaultVolume;
+      if (this.dom.volVal) this.dom.volVal.textContent = Math.round(s.defaultVolume * 100) + "%";
+      if (this.dom.loopToggle) this.dom.loopToggle.checked = !!s.loop;
+      if (this.dom.autoNextToggle) this.dom.autoNextToggle.checked = !!s.autoNext;
+      if (this.dom.rememberToggle) this.dom.rememberToggle.checked = !!s.rememberProgress;
+
+      if (this.dom.subEnableToggle) this.dom.subEnableToggle.checked = !!s.subEnabled;
+      if (this.dom.subFontSelect) this.dom.subFontSelect.value = s.subFont;
+      if (this.dom.subSizeSlider) this.dom.subSizeSlider.value = s.subSize;
+      if (this.dom.subSizeVal) this.dom.subSizeVal.textContent = s.subSize;
+      if (this.dom.subWeightSlider) this.dom.subWeightSlider.value = s.subWeight;
+      if (this.dom.subWeightVal) this.dom.subWeightVal.textContent = s.subWeight;
+      if (this.dom.subColorInput) this.dom.subColorInput.value = s.subColor;
+      if (this.dom.subAutoContrastToggle) this.dom.subAutoContrastToggle.checked = !!s.subAutoContrast;
+      if (this.dom.subBgToggle) this.dom.subBgToggle.checked = !!s.subBg;
+      if (this.dom.subBgColorInput) this.dom.subBgColorInput.value = s.subBgColor;
+      if (this.dom.subBgOpacitySlider) this.dom.subBgOpacitySlider.value = s.subBgOpacity;
+      if (this.dom.subBgOpacityVal) this.dom.subBgOpacityVal.textContent = s.subBgOpacity + "%";
+      if (this.dom.subRadiusSlider) this.dom.subRadiusSlider.value = s.subRadius;
+      if (this.dom.subRadiusVal) this.dom.subRadiusVal.textContent = s.subRadius;
+      if (this.dom.subPosSlider) this.dom.subPosSlider.value = s.subPos;
+      if (this.dom.subPosVal) this.dom.subPosVal.textContent = s.subPos;
+
+      // چیپس سرعت
+      $$("#speedChips button").forEach(function (b) {
+        b.classList.toggle("active", parseFloat(b.dataset.speed) === s.defaultSpeed);
+      });
+
+      this.applySubtitleStyleVars();
+      this.updateSubPreview();
+    },
+
+    setTheme: function (mode, silent) {
       this.settings.theme = mode;
-      let effective = mode;
+      var effective = mode;
       if (mode === "auto") {
-        const h = new Date().getHours();
+        var h = new Date().getHours();
         effective = (h >= 7 && h < 19) ? "light" : "dark";
       }
       document.body.setAttribute("data-theme", effective);
-      saveLS("settings", this.settings);
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute("content", effective === "dark" ? "#0a0a14" : "#eef1f8");
+      if (!silent) saveLS("settings", this.settings);
+
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", effective === "dark" ? "#0d1117" : "#f6f8fa");
     },
 
-    applyThemeAuto() {
-      if (this.settings.theme === "auto") {
-        setInterval(() => {
-          if (this.settings.theme === "auto") this.setTheme("auto");
-        }, 60000);
-      }
+    applyThemeAuto: function () {
+      var self = this;
+      setInterval(function () {
+        if (self.settings.theme === "auto") self.setTheme("auto", true);
+      }, 60000);
     },
 
-    /* =================================================
-       هدر
-       ================================================= */
-    bindHeader() {
-      on(this.dom.sidebarToggleBtn, "click", () => {
-        this.dom.playlistSidebar.classList.toggle("collapsed");
-      });
+    /* =============================================
+       FS Gate
+       ============================================= */
+    bindFsGate: function () {
+      var self = this;
 
-      on(this.dom.logoHome, "click", (e) => {
-        e.preventDefault();
-        this.showView("upload");
-      });
-
-      // نویگیشن
-      $$(".nav-btn", this.dom.appNav).forEach((b) => {
-        on(b, "click", () => {
-          $$(".nav-btn", this.dom.appNav).forEach((x) => x.classList.remove("active"));
-          b.classList.add("active");
-          this.showView(b.dataset.view);
-        });
-      });
-
-      on(this.dom.uploadBtn, "click", () => this.dom.videoInput.click());
-
-      on(this.dom.shortcutsBtn, "click", () => {
-        this.openModal("shortcutsModal");
-      });
-
-      on(this.dom.themeToggle, "click", () => {
-        const order = ["light", "dark", "auto"];
-        const cur = this.settings.theme;
-        const next = order[(order.indexOf(cur) + 1) % order.length];
-        this.setTheme(next);
-        this.applySettings();
-        const names = { light: "روشن", dark: "تاریک", auto: "خودکار" };
-        toast("تم: " + names[next], "info", 1600);
-      });
-
-      on(this.dom.settingsBtn, "click", () => this.openSettings());
-    },
-
-    /* =================================================
-       سایدبار
-       ================================================= */
-    bindSidebar() {
-      $$(".sidebar-tab", this.dom.sidebarTabs).forEach((t) => {
-        on(t, "click", () => {
-          $$(".sidebar-tab", this.dom.sidebarTabs).forEach((x) => x.classList.remove("active"));
-          t.classList.add("active");
-          this.renderSidebarList(t.dataset.tab);
-        });
-      });
-
-      on(this.dom.playlistSearch, "input", () => {
-        const active = document.querySelector(".sidebar-tab.active");
-        this.renderSidebarList(active ? active.dataset.tab : "playlist");
-      });
-
-      on(this.dom.playlistSort, "change", () => {
-        this.sortPlaylist(this.dom.playlistSort.value);
-      });
-
-      on(this.dom.addFirstFileBtn, "click", () => this.dom.videoInput.click());
-
-      on(this.dom.clearPlaylistBtn, "click", () => {
-        if (this.playlist.length === 0) return;
-        if (!confirm("همه‌ی فایل‌ها از پلی‌لیست حذف بشن؟")) return;
-        this.revokeAll();
-        this.playlist = [];
-        this.currentIndex = -1;
-        this.dom.videoPlayer.removeAttribute("src");
-        this.dom.videoPlayer.load();
-        this.renderPlaylist();
-        this.updatePlayerUI();
-        toast("پلی‌لیست پاک شد", "success");
-      });
-    },
-
-    /* =================================================
-       نمایش view
-       ================================================= */
-    showView(name) {
-      $$(".view").forEach((v) => v.classList.remove("active"));
-      const target = $("view" + name.charAt(0).toUpperCase() + name.slice(1));
-      if (target) target.classList.add("active");
-    },
-
-    /* =================================================
-       افزودن فایل‌ها
-       ================================================= */
-    bindUpload() {
-      on(this.dom.pickVideoBtn, "click", () => this.dom.videoInput.click());
-      on(this.dom.pickImageBtn, "click", () => this.dom.imageInput.click());
-      on(this.dom.pickFolderBtn, "click", () => this.dom.folderInput.click());
-      on(this.dom.addFirstPhotoBtn, "click", () => this.dom.imageInput.click());
-
-      on(this.dom.videoInput, "change", (e) => this.handleFiles(e.target.files, "video"));
-      on(this.dom.imageInput, "change", (e) => this.handleFiles(e.target.files, "image"));
-      on(this.dom.folderInput, "change", (e) => this.handleFiles(e.target.files, "auto"));
-
-      // drag & drop
-      const dz = this.dom.dropZone;
-      const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
-      ["dragenter", "dragover", "dragleave", "drop"].forEach((ev) => on(window, ev, prevent, false));
-
-      on(window, "dragenter", () => dz && dz.classList.add("drag-active"));
-      on(window, "dragover", () => dz && dz.classList.add("drag-active"));
-      on(window, "dragleave", (e) => {
-        if (e.clientX <= 0 || e.clientY <= 0 ||
-            e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
-          dz && dz.classList.remove("drag-active");
+      function hideGate() {
+        if (self.dom.fsGate) {
+          self.dom.fsGate.classList.add("hide");
+          setTimeout(function () {
+            if (self.dom.fsGate) self.dom.fsGate.classList.add("hidden");
+          }, 500);
         }
-      });
-      on(window, "drop", (e) => {
-        dz && dz.classList.remove("drag-active");
-        const files = e.dataTransfer && e.dataTransfer.files;
-        if (files && files.length) this.handleFiles(files, "auto");
-      });
-    },
+      }
 
-    handleFiles(fileList, mode) {
-      const files = Array.from(fileList || []);
-      if (!files.length) return;
-      let addedVid = 0, addedImg = 0;
-
-      files.forEach((file) => {
-        const name = file.name || "بدون‌نام";
-        if (mode === "video" || (mode === "auto" && isVideoFile(file))) {
-          if (!isVideoFile(file) && mode === "video") return;
-          const item = {
-            id: uid(),
-            file: file,
-            url: URL.createObjectURL(file),
-            name: name,
-            size: file.size,
-            duration: 0,
-            thumb: null,
-            type: "video"
-          };
-          this.playlist.push(item);
-          this.generateThumb(item);
-          addedVid++;
-        } else if (mode === "image" || (mode === "auto" && isImageFile(file))) {
-          if (!isImageFile(file) && mode === "image") return;
-          const item = {
-            id: uid(),
-            file: file,
-            url: URL.createObjectURL(file),
-            name: name,
-            size: file.size,
-            type: "image"
-          };
-          this.gallery.push(item);
-          addedImg++;
+      on(this.dom.fsEnterBtn, "click", function () {
+        var el = document.documentElement;
+        var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+        if (req) {
+          try {
+            var p = req.call(el);
+            if (p && p.catch) p.catch(function () {});
+          } catch (e) {}
         }
-      });
-
-      if (addedVid) {
-        this.renderPlaylist();
-        toast(addedVid + " ویدیو اضافه شد", "success");
-        if (this.currentIndex === -1) this.playIndex(0);
-      }
-      if (addedImg) {
-        this.renderGallery();
-        toast(addedImg + " عکس اضافه شد", "success");
-      }
-      if (!addedVid && !addedImg) toast("فایلی قابل اضافه کردن نبود", "error");
-
-      // پاک کردن ورودی
-      this.dom.videoInput.value = "";
-      this.dom.imageInput.value = "";
-      this.dom.folderInput.value = "";
-    },
-
-    generateThumb(item) {
-      const v = document.createElement("video");
-      v.src = item.url;
-      v.muted = true;
-      v.playsInline = true;
-      v.preload = "metadata";
-
-      const done = () => {
+        // تلاش برای قفل چرخش
         try {
-          const canvas = document.createElement("canvas");
-          canvas.width = 160;
-          canvas.height = 90;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(v, 0, 0, 160, 90);
-          item.thumb = canvas.toDataURL("image/jpeg", 0.6);
-          this.renderPlaylist();
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock("landscape").catch(function () {});
+          }
         } catch (e) {}
-        v.remove();
-      };
-
-      on(v, "loadedmetadata", () => {
-        item.duration = v.duration || 0;
-        this.renderPlaylist();
-        try { v.currentTime = Math.min(1, (v.duration || 2) / 3); }
-        catch (e) { done(); }
+        hideGate();
       });
 
-      on(v, "seeked", done);
-      on(v, "error", () => { v.remove(); });
+      on(this.dom.fsSkipBtn, "click", hideGate);
     },
 
-    /* =================================================
-       رندر پلی‌لیست
-       ================================================= */
-    sortPlaylist(mode) {
+    /* =============================================
+       Rotate
+       ============================================= */
+    bindRotate: function () {
+      on(this.dom.rotateLockBtn, "click", function () {
+        try {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock("landscape").then(function () {
+              toast("گوشی چرخید", "success");
+            }).catch(function () {
+              toast("چرخش خودکار پشتیبانی نمی‌شه، دستی بچرخون", "info", 3000);
+            });
+          } else {
+            toast("دستی گوشی رو بچرخون", "info", 3000);
+          }
+        } catch (e) {
+          toast("دستی گوشی رو بچرخون", "info", 3000);
+        }
+      });
+    },
+
+    /* =============================================
+       Topbar
+       ============================================= */
+    bindTopbar: function () {
+      var self = this;
+
+      on(this.dom.menuBtn, "click", function () { self.openSidebar(); });
+      on(this.dom.uploadBtn, "click", function () { self.dom.videoInput.click(); });
+
+      on(this.dom.themeBtn, "click", function () {
+        var order = ["dark", "light", "auto"];
+        var cur = self.settings.theme;
+        var next = order[(order.indexOf(cur) + 1) % order.length];
+        self.setTheme(next);
+        self.syncUI();
+        var names = { dark: "تاریک", light: "روشن", auto: "خودکار" };
+        toast("تم: " + names[next], "info", 1400);
+      });
+    },
+
+    /* =============================================
+       View
+       ============================================= */
+    showView: function (name) {
+      $$(".view").forEach(function (v) { v.classList.remove("active"); });
+      var el = $("view" + name.charAt(0).toUpperCase() + name.slice(1));
+      if (el) el.classList.add("active");
+    },
+
+    /* =============================================
+       Sidebar
+       ============================================= */
+    openSidebar: function () {
+      this.dom.sidebar.classList.add("open");
+      this.dom.sidebarOverlay.classList.add("show");
+      this.renderSidebarList("playlist");
+    },
+
+    closeSidebar: function () {
+      this.dom.sidebar.classList.remove("open");
+      this.dom.sidebarOverlay.classList.remove("show");
+    },
+
+    bindSidebar: function () {
+      var self = this;
+
+      on(this.dom.sidebarClose, "click", function () { self.closeSidebar(); });
+      on(this.dom.sidebarOverlay, "click", function () { self.closeSidebar(); });
+
+      $$(".sb-tab", this.dom.sbTabs).forEach(function (t) {
+        on(t, "click", function () {
+          $$(".sb-tab", self.dom.sbTabs).forEach(function (x) { x.classList.remove("active"); });
+          t.classList.add("active");
+          self.renderSidebarList(t.dataset.tab);
+        });
+      });
+
+      on(this.dom.sbSearch, "input", function () {
+        var act = document.querySelector(".sb-tab.active");
+        self.renderSidebarList(act ? act.dataset.tab : "playlist");
+      });
+
+      on(this.dom.sbSort, "change", function () {
+        self.sortPlaylist(self.dom.sbSort.value);
+      });
+
+      on(this.dom.sbClear, "click", function () {
+        if (!self.playlist.length) return;
+        if (!confirm("همه ی فایل ها از لیست حذف بشن؟")) return;
+        self.revokeAll();
+        self.playlist = [];
+        self.currentIndex = -1;
+        self.dom.videoPlayer.removeAttribute("src");
+        self.dom.videoPlayer.load();
+        self.renderPlaylist();
+        self.updateEmptyPlayer();
+        toast("لیست پاک شد", "success");
+      });
+    },
+
+    sortPlaylist: function (mode) {
       if (mode === "manual") { this.renderPlaylist(); return; }
-      this.playlist.sort((a, b) => {
-        if (mode === "name") return a.name.localeCompare(b.name, "fa");
+      this.playlist.sort(function (a, b) {
+        if (mode === "name") return (a.name || "").localeCompare(b.name || "", "fa");
         if (mode === "duration") return (b.duration || 0) - (a.duration || 0);
         if (mode === "size") return (b.size || 0) - (a.size || 0);
-        if (mode === "date") return 0;
         return 0;
       });
       this.renderPlaylist();
     },
 
-    renderPlaylist() {
-      const list = this.dom.playlistList;
+    renderPlaylist: function () {
+      var self = this;
+      var list = this.dom.sbList;
       if (!list) return;
       list.innerHTML = "";
 
-      const q = (this.dom.playlistSearch.value || "").trim().toLowerCase();
-      const filtered = this.playlist.filter((p) => p.name.toLowerCase().includes(q));
+      var q = (this.dom.sbSearch.value || "").trim().toLowerCase();
+      var filtered = this.playlist.filter(function (p) {
+        return (p.name || "").toLowerCase().indexOf(q) !== -1;
+      });
 
-      if (filtered.length === 0) {
-        const e = document.createElement("div");
-        e.className = "empty-state";
-        e.innerHTML = this.playlist.length === 0
-          ? '<p>پلی‌لیستت خالیه</p><button class="btn btn-primary" id="addFirstFileBtn2">افزودن فایل</button>'
-          : '<p>چیزی پیدا نشد</p>';
-        list.appendChild(e);
-        const b2 = $("addFirstFileBtn2");
-        if (b2) on(b2, "click", () => this.dom.videoInput.click());
+      if (!filtered.length) {
+        list.innerHTML = '<div class="empty-state"><p>' +
+          (this.playlist.length ? "چیزی پیدا نشد" : "لیست خالیه") +
+          '</p></div>';
+        this.dom.sbCount.textContent = this.playlist.length + " فایل";
         return;
       }
 
-      filtered.forEach((item) => {
-        const realIdx = this.playlist.indexOf(item);
-        const el = document.createElement("div");
-        el.className = "playlist-item" + (realIdx === this.currentIndex ? " active" : "");
+      filtered.forEach(function (item) {
+        var realIdx = self.playlist.indexOf(item);
+        var el = document.createElement("div");
+        el.className = "playlist-item" + (realIdx === self.currentIndex ? " active" : "");
         el.dataset.id = item.id;
         el.dataset.index = realIdx;
-        el.draggable = true;
 
-        const thumbHTML = item.thumb
+        var thumbHTML = item.thumb
           ? '<img src="' + item.thumb + '" alt="">'
           : '<span>' + (item.type === "image" ? "عکس" : "ویدیو") + '</span>';
 
         el.innerHTML =
           '<div class="playlist-thumb">' + thumbHTML + '</div>' +
           '<div class="playlist-info">' +
-            '<span class="playlist-name">' + this.escape(item.name) + '</span>' +
+            '<span class="playlist-name">' + esc(item.name) + '</span>' +
             '<span class="playlist-meta">' +
-              '<span>' + (item.duration ? formatTime(item.duration) : "--:--") + '</span>' +
-              '<span>' + formatBytes(item.size) + '</span>' +
+              '<span>' + (item.duration ? fmtTime(item.duration) : "--:--") + '</span>' +
+              '<span>' + fmtBytes(item.size) + '</span>' +
             '</span>' +
-          '</div>' +
-          '<span class="playlist-drag"></span>';
+          '</div>';
 
-        on(el, "click", () => {
-          if (item.type === "video") this.playIndex(realIdx);
-          else this.openPhotoByItem(item);
-        });
-
-        on(el, "contextmenu", (e) => {
-          e.preventDefault();
-          this.openContextMenu(e.clientX, e.clientY, realIdx);
-        });
-
-        // drag reorder
-        on(el, "dragstart", (e) => {
-          e.dataTransfer.setData("text/plain", String(realIdx));
-          el.classList.add("dragging");
-        });
-        on(el, "dragend", () => el.classList.remove("dragging"));
-        on(el, "dragover", (e) => { e.preventDefault(); el.classList.add("drag-over"); });
-        on(el, "dragleave", () => el.classList.remove("drag-over"));
-        on(el, "drop", (e) => {
-          e.preventDefault();
-          el.classList.remove("drag-over");
-          const from = parseInt(e.dataTransfer.getData("text/plain"), 10);
-          const to = realIdx;
-          if (isNaN(from) || from === to) return;
-          const moved = this.playlist.splice(from, 1)[0];
-          this.playlist.splice(to, 0, moved);
-          if (this.currentIndex === from) this.currentIndex = to;
-          else if (this.currentIndex > from && this.currentIndex <= to) this.currentIndex--;
-          else if (this.currentIndex < from && this.currentIndex >= to) this.currentIndex++;
-          this.renderPlaylist();
+        on(el, "click", function () {
+          if (item.type === "video") self.playIndex(realIdx);
+          else self.openPhotoByItem(item);
         });
 
         list.appendChild(el);
       });
 
-      if (this.dom.playlistCount) this.dom.playlistCount.textContent = this.playlist.length + " فایل";
+      this.dom.sbCount.textContent = this.playlist.length + " فایل";
     },
 
-    renderSidebarList(tab) {
+    renderSidebarList: function (tab) {
+      var self = this;
       if (tab === "playlist") { this.renderPlaylist(); return; }
-      const list = this.dom.playlistList;
+      var list = this.dom.sbList;
       list.innerHTML = "";
 
       if (tab === "history") {
@@ -574,109 +563,195 @@
           list.innerHTML = '<div class="empty-state"><p>تاریخچه خالیه</p></div>';
           return;
         }
-        this.history.slice().reverse().forEach((h) => {
-          const el = document.createElement("div");
+        this.history.slice().reverse().forEach(function (h) {
+          var el = document.createElement("div");
           el.className = "playlist-item";
           el.innerHTML =
-            '<div class="playlist-thumb">ت</div>' +
+            '<div class="playlist-thumb"><span>ت</span></div>' +
             '<div class="playlist-info">' +
-              '<span class="playlist-name">' + this.escape(h.name) + '</span>' +
-              '<span class="playlist-meta"><span>' + this.escape(h.date || "") + '</span></span>' +
+              '<span class="playlist-name">' + esc(h.name) + '</span>' +
+              '<span class="playlist-meta"><span>' + esc(h.date || "") + '</span></span>' +
             '</div>';
           list.appendChild(el);
         });
-      } else if (tab === "bookmarks") {
-        const cur = this.playlist[this.currentIndex];
-        const arr = cur ? (this.bookmarks[cur.id] || []) : [];
+      } else if (tab === "marks") {
+        var cur = this.playlist[this.currentIndex];
+        var arr = cur ? (this.bookmarks[cur.id] || []) : [];
         if (!arr.length) {
-          list.innerHTML = '<div class="empty-state"><p>بوک‌مارکی نداری</p></div>';
+          list.innerHTML = '<div class="empty-state"><p>بوک مارکی نداری</p></div>';
           return;
         }
-        arr.forEach((b) => {
-          const el = document.createElement("div");
+        arr.forEach(function (b) {
+          var el = document.createElement("div");
           el.className = "playlist-item";
           el.innerHTML =
-            '<div class="playlist-thumb">ب</div>' +
+            '<div class="playlist-thumb"><span>ب</span></div>' +
             '<div class="playlist-info">' +
-              '<span class="playlist-name">' + this.escape(b.name) + '</span>' +
-              '<span class="playlist-meta"><span>' + formatTime(b.time) + '</span></span>' +
+              '<span class="playlist-name">' + esc(b.name) + '</span>' +
+              '<span class="playlist-meta"><span>' + fmtTime(b.time) + '</span></span>' +
             '</div>';
-          on(el, "click", () => {
-            const v = this.dom.videoPlayer;
+          on(el, "click", function () {
+            var v = self.dom.videoPlayer;
             if (v && isFinite(v.duration)) v.currentTime = b.time;
-          });
-          list.appendChild(el);
-        });
-      } else if (tab === "notes") {
-        const cur = this.playlist[this.currentIndex];
-        const arr = cur ? (this.notes[cur.id] || []) : [];
-        if (!arr.length) {
-          list.innerHTML = '<div class="empty-state"><p>یادداشتی نداری</p></div>';
-          return;
-        }
-        arr.forEach((n) => {
-          const el = document.createElement("div");
-          el.className = "playlist-item";
-          el.innerHTML =
-            '<div class="playlist-thumb">ی</div>' +
-            '<div class="playlist-info">' +
-              '<span class="playlist-name">' + this.escape(n.text) + '</span>' +
-              '<span class="playlist-meta"><span>' + formatTime(n.time) + '</span></span>' +
-            '</div>';
-          on(el, "click", () => {
-            const v = this.dom.videoPlayer;
-            if (v && isFinite(v.duration)) v.currentTime = n.time;
+            self.closeSidebar();
           });
           list.appendChild(el);
         });
       }
     },
 
-    escape(str) {
-      return String(str || "").replace(/[&<>"']/g, (c) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      }[c]));
+    /* =============================================
+       Upload
+       ============================================= */
+    bindUpload: function () {
+      var self = this;
+
+      on(this.dom.pickVideoBtn, "click", function () { self.dom.videoInput.click(); });
+      on(this.dom.pickImageBtn, "click", function () { self.dom.imageInput.click(); });
+      on(this.dom.pickFolderBtn, "click", function () { self.dom.folderInput.click(); });
+      on(this.dom.galleryAddBtn, "click", function () { self.dom.imageInput.click(); });
+
+      on(this.dom.videoInput, "change", function (e) { self.handleFiles(e.target.files, "video"); });
+      on(this.dom.imageInput, "change", function (e) { self.handleFiles(e.target.files, "image"); });
+      on(this.dom.folderInput, "change", function (e) { self.handleFiles(e.target.files, "auto"); });
+
+      // drag & drop
+      var dz = this.dom.uploadArea;
+      if (!dz) return;
+
+      ["dragenter", "dragover", "drop"].forEach(function (ev) {
+        on(document, ev, function (e) { e.preventDefault(); e.stopPropagation(); });
+      });
+
+      on(document, "dragenter", function () { dz.classList.add("drag-active"); });
+      on(document, "dragover", function () { dz.classList.add("drag-active"); });
+      on(document, "dragleave", function (e) {
+        if (e.clientX <= 0 || e.clientY <= 0 ||
+            e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+          dz.classList.remove("drag-active");
+        }
+      });
+      on(document, "drop", function (e) {
+        dz.classList.remove("drag-active");
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) self.handleFiles(files, "auto");
+      });
     },
 
-    /* =================================================
-       پخش ویدیو
-       ================================================= */
-    playIndex(idx) {
+    handleFiles: function (fileList, mode) {
+      var self = this;
+      var files = Array.prototype.slice.call(fileList || []);
+      if (!files.length) return;
+
+      var addedV = 0, addedI = 0;
+
+      files.forEach(function (file) {
+        if (!file || !file.name) return;
+
+        if (isVideoFile(file) && (mode === "video" || mode === "auto")) {
+          var item = {
+            id: uid(),
+            file: file,
+            url: URL.createObjectURL(file),
+            name: file.name,
+            size: file.size,
+            duration: 0,
+            thumb: null,
+            type: "video"
+          };
+          self.playlist.push(item);
+          self.generateThumb(item);
+          addedV++;
+        } else if (isImageFile(file) && (mode === "image" || mode === "auto")) {
+          var img = {
+            id: uid(),
+            file: file,
+            url: URL.createObjectURL(file),
+            name: file.name,
+            size: file.size,
+            type: "image"
+          };
+          self.gallery.push(img);
+          addedI++;
+        }
+      });
+
+      if (addedV) {
+        this.renderPlaylist();
+        toast(addedV + " ویدیو اضافه شد", "success");
+        if (this.currentIndex === -1) this.playIndex(0);
+      }
+      if (addedI) {
+        // رندر بعد از یک فریم تا DOM آماده بشه (رفع باگ عکس)
+        requestAnimationFrame(function () {
+          self.renderGallery();
+        });
+        toast(addedI + " عکس اضافه شد", "success");
+      }
+      if (!addedV && !addedI) toast("فایلی قابل اضافه کردن نبود", "error");
+
+      this.dom.videoInput.value = "";
+      this.dom.imageInput.value = "";
+      this.dom.folderInput.value = "";
+    },
+
+    generateThumb: function (item) {
+      var self = this;
+      var v = document.createElement("video");
+      v.src = item.url;
+      v.muted = true;
+      v.playsInline = true;
+      v.preload = "metadata";
+
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        try {
+          var c = document.createElement("canvas");
+          c.width = 160;
+          c.height = 90;
+          c.getContext("2d").drawImage(v, 0, 0, 160, 90);
+          item.thumb = c.toDataURL("image/jpeg", 0.6);
+          self.renderPlaylist();
+        } catch (e) {}
+        try { v.remove(); } catch (e) {}
+      }
+
+      on(v, "loadedmetadata", function () {
+        item.duration = v.duration || 0;
+        self.renderPlaylist();
+        try { v.currentTime = Math.min(1, (v.duration || 2) / 3); }
+        catch (e) { finish(); }
+      });
+      on(v, "seeked", finish);
+      on(v, "error", function () { try { v.remove(); } catch (e) {} });
+      setTimeout(finish, 5000);
+    },
+
+    /* =============================================
+       Video Player
+       ============================================= */
+    playIndex: function (idx) {
       if (idx < 0 || idx >= this.playlist.length) return;
-      const item = this.playlist[idx];
+      var item = this.playlist[idx];
       if (!item || item.type !== "video") return;
 
       this.currentIndex = idx;
-      const v = this.dom.videoPlayer;
+      var v = this.dom.videoPlayer;
       v.src = item.url;
       v.load();
       v.playbackRate = this.settings.defaultSpeed || 1;
       v.volume = this.settings.defaultVolume;
 
-      if (this.dom.videoTitle) this.dom.videoTitle.textContent = item.name;
-      if (this.dom.videoMeta) this.dom.videoMeta.textContent = formatBytes(item.size);
+      if (this.dom.hudTitle) this.dom.hudTitle.textContent = item.name;
+      if (this.dom.hudSubtitle) this.dom.hudSubtitle.textContent = fmtBytes(item.size);
 
       this.showView("player");
-      // همگام‌سازی نویگیشن بالا
-      $$(".nav-btn", this.dom.appNav).forEach((b) => b.classList.toggle("active", b.dataset.view === "player"));
+      this.miniMode = false;
+      this.dom.videoStage.classList.remove("mini-mode");
 
-      // progress ذخیره‌شده
-      if (this.settings.rememberProgress) {
-        const prog = loadLS("progress." + item.id, 0);
-        if (prog > 2 && isFinite(prog)) {
-          v.currentTime = prog;
-        }
-      }
-
-      if (this.settings.autoPlay) {
-        v.play().catch(() => {});
-      }
-
-      this.renderPlaylist();
-      this.renderBookmarksOnTimeline();
-      this.updatePlayerUI();
-
-      // ثبت تاریخچه
+      // تاریخچه
       this.history.push({
         id: item.id,
         name: item.name,
@@ -684,1109 +759,1311 @@
       });
       if (this.history.length > 100) this.history.shift();
       saveLS("history", this.history);
+
+      this.renderPlaylist();
+      this.showHud(true);
+      this.showCenterPlay(true);
     },
 
-    /* =================================================
-       بایند پلیر
-       ================================================= */
-    bindPlayer() {
-      const v = this.dom.videoPlayer;
+    updateEmptyPlayer: function () {
+      if (this.dom.hudTitle) this.dom.hudTitle.textContent = "فایلی انتخاب نشده";
+      if (this.dom.hudSubtitle) this.dom.hudSubtitle.textContent = "";
+    },
 
-      on(v, "loadedmetadata", () => {
-        this.updateTimelineBuffer();
-        this.updatePlayerUI();
-        const item = this.playlist[this.currentIndex];
+    bindVideo: function () {
+      var self = this;
+      var v = this.dom.videoPlayer;
+
+      on(v, "loadedmetadata", function () {
+        self.updateTimelineBuffer();
+        self.updateTimeDisplay();
+        var item = self.playlist[self.currentIndex];
         if (item && !item.duration) {
           item.duration = v.duration;
-          this.renderPlaylist();
+          self.renderPlaylist();
+        }
+        // بازیابی محل توقف
+        if (self.settings.rememberProgress && item) {
+          var prog = loadLS("progress." + item.id, 0);
+          if (prog > 2 && prog < v.duration - 2) v.currentTime = prog;
         }
       });
 
-      on(v, "timeupdate", () => {
-        this.updateTimeline();
-        this.updateTimeDisplay();
-        this.checkABLoop();
-        if (this.settings.rememberProgress) {
-          const item = this.playlist[this.currentIndex];
-          if (item && v.currentTime > 2) saveLS("progress." + item.id, v.currentTime);
+      on(v, "timeupdate", function () {
+        self.updateTimeline();
+        self.updateTimeDisplay();
+        self.updateSubtitleCue();
+        self.checkAB();
+        if (self.settings.rememberProgress && v.currentTime > 2) {
+          var item = self.playlist[self.currentIndex];
+          if (item) saveLS("progress." + item.id, v.currentTime);
         }
       });
 
-      on(v, "progress", () => this.updateTimelineBuffer());
+      on(v, "progress", function () { self.updateTimelineBuffer(); });
 
-      on(v, "play", () => {
-        this.updatePlayIcon(true);
-        this.hideBigPlay();
-        this.hidePauseBlur();
-        if (this.dom.extraStatus) this.dom.extraStatus.textContent = "در حال پخش";
+      on(v, "play", function () {
+        self.setPlayIcon(true);
+        self.showCenterPlay(false);
+        self.hidePauseBlur();
+        self.scheduleHudHide();
       });
 
-      on(v, "pause", () => {
-        this.updatePlayIcon(false);
+      on(v, "pause", function () {
+        self.setPlayIcon(false);
         if (!v.ended) {
-          this.showBigPlay();
-          this.showPauseBlur();
+          self.showCenterPlay(true);
+          self.showPauseBlur();
         }
-        if (this.dom.extraStatus) this.dom.extraStatus.textContent = "متوقف";
+        self.showHud(true);
+        self.cancelHudHide();
       });
 
-      on(v, "ended", () => {
-        this.updatePlayIcon(false);
-        this.hidePauseBlur();
-        if (this.sleepEndOfVideo) {
-          this.sleepEndOfVideo = false;
+      on(v, "ended", function () {
+        self.setPlayIcon(false);
+        self.hidePauseBlur();
+        if (self.sleepEnd) {
+          self.sleepEnd = false;
           toast("تایمر خواب: پایان ویدیو", "info");
           return;
         }
-        const loop = this.dom.loopBtn.classList.contains("active");
-        if (loop) {
+        if (self.settings.loop) {
           v.currentTime = 0;
-          v.play().catch(() => {});
+          v.play().catch(function () {});
           return;
         }
-        if (this.settings.autoNext && this.currentIndex < this.playlist.length - 1) {
-          this.playIndex(this.currentIndex + 1);
+        if (self.settings.autoNext && self.currentIndex < self.playlist.length - 1) {
+          self.playIndex(self.currentIndex + 1);
+        } else {
+          self.showCenterPlay(true);
+          self.showHud(true);
         }
       });
 
-      on(v, "volumechange", () => {
-        this.dom.volumeSlider.value = v.volume;
-        this.updateVolumeIcon();
-        this.settings.defaultVolume = v.volume;
+      on(v, "volumechange", function () {
+        if (self.dom.volSlider) self.dom.volSlider.value = v.volume;
+        if (self.dom.volVal) self.dom.volVal.textContent = Math.round(v.volume * 100) + "%";
       });
 
-      on(v, "ratechange", () => {
-        this.dom.speedLabel.textContent = v.playbackRate + "x";
-        this.dom.extraSpeed.textContent = v.playbackRate + "x";
+      on(v, "waiting", function () {
+        if (self.dom.hudSubtitle) self.dom.hudSubtitle.textContent = "در حال بارگذاری...";
       });
 
-      on(v, "waiting", () => {
-        if (this.dom.extraStatus) this.dom.extraStatus.textContent = "در حال بارگذاری";
+      on(v, "playing", function () {
+        var item = self.playlist[self.currentIndex];
+        if (item && self.dom.hudSubtitle) self.dom.hudSubtitle.textContent = fmtBytes(item.size);
       });
-      on(v, "playing", () => {
-        if (this.dom.extraStatus) this.dom.extraStatus.textContent = "در حال پخش";
-      });
+    },
 
-      // کلیک روی ویدیو = پخش/توقف
-      on(this.dom.videoWrapper, "click", (e) => {
-        if (e.target.closest(".controls-bar")) return;
-        if (e.target.closest(".big-play-btn")) return;
-        if (e.target.closest(".video-top-overlay")) return;
-        this.togglePlay();
-      });
+    /* =============================================
+       HUD
+       ============================================= */
+    bindHud: function () {
+      var self = this;
 
-      on(this.dom.bigPlayBtn, "click", (e) => {
+      on(this.dom.hudPlay, "click", function (e) {
         e.stopPropagation();
-        this.togglePlay();
+        self.togglePlay();
       });
 
-      on(this.dom.closeVideoBtn, "click", (e) => {
+      on(this.dom.hudCenterPlay, "click", function (e) {
         e.stopPropagation();
+        self.togglePlay();
+      });
+
+      on(this.dom.hudRewind, "click", function (e) {
+        e.stopPropagation();
+        var v = self.dom.videoPlayer;
+        v.currentTime = Math.max(0, v.currentTime - 10);
+      });
+
+      on(this.dom.hudForward, "click", function (e) {
+        e.stopPropagation();
+        var v = self.dom.videoPlayer;
+        v.currentTime = Math.min(v.duration || 0, v.currentTime + 10);
+      });
+
+      on(this.dom.hudPrev, "click", function (e) {
+        e.stopPropagation();
+        if (self.currentIndex > 0) self.playIndex(self.currentIndex - 1);
+      });
+
+      on(this.dom.hudNext, "click", function (e) {
+        e.stopPropagation();
+        if (self.currentIndex < self.playlist.length - 1) self.playIndex(self.currentIndex + 1);
+      });
+
+      on(this.dom.hudClose, "click", function (e) {
+        e.stopPropagation();
+        var v = self.dom.videoPlayer;
         v.pause();
         v.removeAttribute("src");
         v.load();
-        this.currentIndex = -1;
-        this.renderPlaylist();
-        this.updatePlayerUI();
-        this.showView("upload");
+        self.currentIndex = -1;
+        self.updateEmptyPlayer();
+        self.renderPlaylist();
+        self.showView("upload");
       });
 
-      on(this.dom.miniModeBtn, "click", (e) => {
+      on(this.dom.hudSubtitle, "click", function (e) {
         e.stopPropagation();
-        this.toggleMiniMode();
+        // چرخش بین حالت‌های زیرنویس
+        self.toggleSubtitleQuick();
+      });
+
+      on(this.dom.hudSettings, "click", function (e) {
+        e.stopPropagation();
+        self.openHudSettings();
+      });
+
+      on(this.dom.hudFullscreen, "click", function (e) {
+        e.stopPropagation();
+        self.toggleFullscreen();
+      });
+
+      on(this.dom.hudMiniBtn, "click", function (e) {
+        e.stopPropagation();
+        self.toggleMiniMode();
+      });
+
+      // کلیک روی خود ویدیو (نه روی HUD)
+      on(this.dom.videoStage, "click", function (e) {
+        if (e.target.closest(".hud-bottom") ||
+            e.target.closest(".hud-top") ||
+            e.target.closest(".hud-center-play") ||
+            e.target.closest(".hud-settings") ||
+            e.target.closest(".gesture-indicator")) {
+          return;
+        }
+        // toggle HUD
+        if (self.hudVisible) self.hideHud();
+        else self.showHud(true);
       });
     },
 
-    togglePlay() {
-      const v = this.dom.videoPlayer;
-      if (!v.src) { toast("اول یه ویدیو انتخاب کن", "info"); return; }
-      if (v.paused) v.play().catch(() => {});
-      else v.pause();
+    showHud: function (autoHide) {
+      this.hudVisible = true;
+      if (this.dom.hud) this.dom.hud.setAttribute("data-state", "visible");
+      if (autoHide && !this.dom.videoPlayer.paused) this.scheduleHudHide();
     },
 
-    updatePlayIcon(isPlaying) {
-      const svg = this.dom.playPauseIcon;
-      if (!svg) return;
-      if (isPlaying) {
-        svg.innerHTML = '<path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/>';
-      } else {
-        svg.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+    hideHud: function () {
+      this.hudVisible = false;
+      if (this.dom.hud) this.dom.hud.setAttribute("data-state", "hidden");
+      this.showCenterPlay(false);
+    },
+
+    scheduleHudHide: function () {
+      this.cancelHudHide();
+      var self = this;
+      this.hudTimer = setTimeout(function () {
+        if (!self.dom.videoPlayer.paused) self.hideHud();
+      }, 3200);
+    },
+
+    cancelHudHide: function () {
+      if (this.hudTimer) {
+        clearTimeout(this.hudTimer);
+        this.hudTimer = null;
       }
     },
 
-    showBigPlay() { this.dom.bigPlayBtn && this.dom.bigPlayBtn.classList.add("show"); },
-    hideBigPlay() { this.dom.bigPlayBtn && this.dom.bigPlayBtn.classList.remove("show"); },
-    showPauseBlur() { this.dom.pauseBlur && this.dom.pauseBlur.classList.add("active"); },
-    hidePauseBlur() { this.dom.pauseBlur && this.dom.pauseBlur.classList.remove("active"); },
-
-    toggleMiniMode() {
-      this.miniMode = !this.miniMode;
-      this.dom.videoWrapper.classList.toggle("mini-mode", this.miniMode);
+    showCenterPlay: function (show) {
+      if (!this.dom.hudCenterPlay) return;
+      if (show) {
+        this.dom.hudCenterPlay.classList.remove("hide");
+      } else {
+        this.dom.hudCenterPlay.classList.add("hide");
+      }
     },
 
-    /* =================================================
-       نوار تایم
-       ================================================= */
-    bindTimeline() {
-      const tl = this.dom.timeline;
-      const v = this.dom.videoPlayer;
+    setPlayIcon: function (playing) {
+      var svg = this.dom.hudPlayIcon;
+      var svg2 = this.dom.hudCenterIcon;
+      if (playing) {
+        if (svg) svg.innerHTML = '<path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/>';
+        if (svg2) svg2.innerHTML = '<path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/>';
+      } else {
+        if (svg) svg.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+        if (svg2) svg2.innerHTML = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+      }
+    },
 
-      const seekFromEvent = (e) => {
-        const rect = tl.getBoundingClientRect();
-        const x = clamp(e.clientX - rect.left, 0, rect.width);
-        const pct = x / rect.width;
+    togglePlay: function () {
+      var v = this.dom.videoPlayer;
+      if (!v.src) {
+        if (this.playlist.length) this.playIndex(0);
+        else toast("اول یه ویدیو انتخاب کن", "info");
+        return;
+      }
+      if (v.paused) v.play().catch(function () {});
+      else v.pause();
+    },
+
+    showPauseBlur: function () {
+      if (this.dom.pauseBlur) this.dom.pauseBlur.classList.add("active");
+    },
+
+    hidePauseBlur: function () {
+      if (this.dom.pauseBlur) this.dom.pauseBlur.classList.remove("active");
+    },
+
+    toggleMiniMode: function () {
+      this.miniMode = !this.miniMode;
+      this.dom.videoStage.classList.toggle("mini-mode", this.miniMode);
+    },
+
+    toggleFullscreen: function () {
+      var el = this.dom.videoStage;
+      var isFs = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!isFs) {
+        var req = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (req) {
+          try {
+            var p = req.call(el);
+            if (p && p.catch) p.catch(function () {});
+          } catch (e) {}
+        }
+        try {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock("landscape").catch(function () {});
+          }
+        } catch (e) {}
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }
+    },
+
+    /* =============================================
+       Timeline
+       ============================================= */
+    bindTimeline: function () {
+      var self = this;
+      var tl = this.dom.hudTimeline;
+      if (!tl) return;
+      var v = this.dom.videoPlayer;
+
+      function seekFromEvent(clientX) {
+        var rect = tl.getBoundingClientRect();
+        var x = clamp(clientX - rect.left, 0, rect.width);
+        var pct = x / rect.width;
         if (isFinite(v.duration)) v.currentTime = pct * v.duration;
-      };
+      }
 
-      on(tl, "mousedown", (e) => {
-        this.isSeeking = true;
+      // ماوس
+      on(tl, "mousedown", function (e) {
+        self.seeking = true;
         tl.classList.add("dragging");
-        seekFromEvent(e);
+        seekFromEvent(e.clientX);
+        self.cancelHudHide();
       });
 
-      on(window, "mousemove", (e) => {
-        if (this.isSeeking) seekFromEvent(e);
+      on(window, "mousemove", function (e) {
+        if (self.seeking) seekFromEvent(e.clientX);
       });
 
-      on(window, "mouseup", () => {
-        if (this.isSeeking) {
-          this.isSeeking = false;
+      on(window, "mouseup", function () {
+        if (self.seeking) {
+          self.seeking = false;
           tl.classList.remove("dragging");
+          self.scheduleHudHide();
         }
       });
 
-      // پیش‌نمایش
-      on(tl, "mousemove", (e) => this.showTimelinePreview(e));
-      on(tl, "mouseleave", () => this.hideTimelinePreview());
+      // پیش‌نمایش فریم (فقط دسکتاپ)
+      on(tl, "mousemove", function (e) { self.showTimelinePreview(e.clientX); });
+      on(tl, "mouseleave", function () { self.hideTimelinePreview(); });
 
       // لمس
-      on(tl, "touchstart", (e) => {
-        this.isSeeking = true;
-        const t = e.touches[0];
-        seekFromEvent(t);
-      });
-      on(window, "touchmove", (e) => {
-        if (this.isSeeking) {
-          const t = e.touches[0];
-          seekFromEvent(t);
-          this.showTimelinePreview(t);
-        }
-      });
-      on(window, "touchend", () => {
-        this.isSeeking = false;
-        this.hideTimelinePreview();
+      on(tl, "touchstart", function (e) {
+        self.seeking = true;
+        tl.classList.add("dragging");
+        self.cancelHudHide();
+        var t = e.touches[0];
+        seekFromEvent(t.clientX);
+      }, { passive: true });
+
+      on(tl, "touchmove", function (e) {
+        if (!self.seeking) return;
+        var t = e.touches[0];
+        seekFromEvent(t.clientX);
+      }, { passive: true });
+
+      on(tl, "touchend", function () {
+        self.seeking = false;
+        tl.classList.remove("dragging");
+        self.scheduleHudHide();
       });
     },
 
-    updateTimeline() {
-      const v = this.dom.videoPlayer;
-      if (!isFinite(v.duration) || v.duration === 0) return;
-      const pct = (v.currentTime / v.duration) * 100;
-      this.dom.timelineProgress.style.width = pct + "%";
-      this.dom.timelineThumb.style.left = pct + "%";
+    updateTimeline: function () {
+      var v = this.dom.videoPlayer;
+      if (!isFinite(v.duration) || !v.duration) return;
+      var pct = (v.currentTime / v.duration) * 100;
+      if (this.dom.htProgress) this.dom.htProgress.style.width = pct + "%";
+      if (this.dom.htThumb) this.dom.htThumb.style.left = pct + "%";
+      if (this.dom.htAB) this.updateABPosition();
     },
 
-    updateTimelineBuffer() {
-      const v = this.dom.videoPlayer;
+    updateTimelineBuffer: function () {
+      var v = this.dom.videoPlayer;
       if (!v.buffered || !v.buffered.length || !isFinite(v.duration)) return;
-      let end = 0;
-      for (let i = 0; i < v.buffered.length; i++) {
+      var end = 0;
+      for (var i = 0; i < v.buffered.length; i++) {
         if (v.buffered.start(i) <= v.currentTime && v.buffered.end(i) >= v.currentTime) {
           end = v.buffered.end(i);
           break;
         }
       }
-      this.dom.timelineBuffer.style.width = ((end / v.duration) * 100) + "%";
+      if (this.dom.htBuffer) {
+        this.dom.htBuffer.style.width = ((end / v.duration) * 100) + "%";
+      }
     },
 
-    showTimelinePreview(e) {
-      const tl = this.dom.timeline;
-      const v = this.dom.videoPlayer;
+    updateTimeDisplay: function () {
+      var v = this.dom.videoPlayer;
+      if (this.dom.hudTimeCurrent) this.dom.hudTimeCurrent.textContent = fmtTime(v.currentTime);
+      if (this.dom.hudTimeTotal) this.dom.hudTimeTotal.textContent = fmtTime(v.duration || 0);
+    },
+
+    showTimelinePreview: function (clientX) {
+      var tl = this.dom.hudTimeline;
+      var v = this.dom.videoPlayer;
       if (!isFinite(v.duration)) return;
+      var prev = this.dom.htPreview;
+      if (!prev) return;
 
-      const rect = tl.getBoundingClientRect();
-      const x = clamp(e.clientX - rect.left, 0, rect.width);
-      const pct = x / rect.width;
-      const time = pct * v.duration;
+      var rect = tl.getBoundingClientRect();
+      var x = clamp(clientX - rect.left, 0, rect.width);
+      var pct = x / rect.width;
+      var time = pct * v.duration;
 
-      const prev = this.dom.timelinePreview;
-      const prevRect = prev.getBoundingClientRect();
-      let left = x;
-      if (left - prevRect.width / 2 < 0) left = prevRect.width / 2;
-      if (left + prevRect.width / 2 > rect.width) left = rect.width - prevRect.width / 2;
-      prev.style.left = left + "px";
+      var pw = prev.offsetWidth || 140;
+      var left = x - pw / 2;
+      left = clamp(left, 0, rect.width - pw);
+      prev.style.left = (left + pw / 2) + "px";
       prev.classList.add("show");
-      this.dom.timelinePreviewTime.textContent = formatTime(time);
 
-      // فریم پیش‌نمایش
-      const canvas = this.dom.timelinePreviewCanvas;
-      const ctx = canvas.getContext("2d");
-      const hidden = this._previewVideo || (this._previewVideo = document.createElement("video"));
-      hidden.muted = true;
-      hidden.playsInline = true;
-      hidden.src = v.src;
-      hidden.preload = "auto";
+      if (this.dom.htPreviewTime) this.dom.htPreviewTime.textContent = fmtTime(time);
 
-      const draw = () => {
-        try { ctx.drawImage(hidden, 0, 0, canvas.width, canvas.height); } catch (er) {}
+      var canvas = this.dom.htPreviewCanvas;
+      if (!canvas) return;
+      var ctx = canvas.getContext("2d");
+
+      if (!this._previewVideo) {
+        this._previewVideo = document.createElement("video");
+        this._previewVideo.muted = true;
+        this._previewVideo.playsInline = true;
+        this._previewVideo.preload = "auto";
+      }
+      var pv = this._previewVideo;
+
+      if (pv.src !== v.src) {
+        pv.src = v.src;
+      }
+
+      var draw = function () {
+        try { ctx.drawImage(pv, 0, 0, canvas.width, canvas.height); }
+        catch (e) {}
       };
 
-      if (hidden.readyState >= 2) {
-        try { hidden.currentTime = time; } catch (er) {}
+      if (pv.readyState >= 2) {
+        try { pv.currentTime = time; } catch (e) {}
         setTimeout(draw, 30);
       } else {
-        on(hidden, "loadeddata", () => {
-          try { hidden.currentTime = time; } catch (er) {}
-          setTimeout(draw, 50);
+        on(pv, "loadeddata", function () {
+          try { pv.currentTime = time; } catch (e) {}
+          setTimeout(draw, 60);
         }, { once: true });
       }
     },
 
-    hideTimelinePreview() {
-      this.dom.timelinePreview.classList.remove("show");
+    hideTimelinePreview: function () {
+      if (this.dom.htPreview) this.dom.htPreview.classList.remove("show");
     },
 
-    updateTimeDisplay() {
-      const v = this.dom.videoPlayer;
-      if (this.dom.timeDisplay) {
-        this.dom.timeDisplay.textContent =
-          formatTime(v.currentTime) + " / " + formatTime(v.duration || 0);
-      }
+    /* =============================================
+       HUD Settings Panel
+       ============================================= */
+    openHudSettings: function () {
+      this.dom.hudSettings.classList.add("open");
+      this.cancelHudHide();
     },
 
-    renderBookmarksOnTimeline() {
-      const v = this.dom.videoPlayer;
-      const wrap = this.dom.timelineBookmarks;
-      if (!wrap) return;
-      wrap.innerHTML = "";
-      const item = this.playlist[this.currentIndex];
-      if (!item) return;
-      const arr = this.bookmarks[item.id] || [];
-      arr.forEach((b) => {
-        if (!isFinite(v.duration) || v.duration === 0) return;
-        const pct = (b.time / v.duration) * 100;
-        const mark = document.createElement("span");
-        mark.className = "timeline-bookmark-mark";
-        mark.style.left = pct + "%";
-        mark.title = b.name;
-        wrap.appendChild(mark);
-      });
+    closeHudSettings: function () {
+      this.dom.hudSettings.classList.remove("open");
+      this.scheduleHudHide();
     },
 
-    /* =================================================
-       کنترل‌های پایین
-       ================================================= */
-    bindControls() {
-      const v = this.dom.videoPlayer;
+    bindHudSettings: function () {
+      var self = this;
 
-      on(this.dom.playPauseBtn, "click", () => this.togglePlay());
+      on(this.dom.hsClose, "click", function () { self.closeHudSettings(); });
 
-      on(this.dom.prevBtn, "click", () => {
-        if (this.currentIndex > 0) this.playIndex(this.currentIndex - 1);
-      });
-      on(this.dom.nextBtn, "click", () => {
-        if (this.currentIndex < this.playlist.length - 1) this.playIndex(this.currentIndex + 1);
-      });
-
-      on(this.dom.rewindBtn, "click", () => {
-        v.currentTime = Math.max(0, v.currentTime - 10);
-      });
-      on(this.dom.forwardBtn, "click", () => {
-        v.currentTime = Math.min(v.duration || 0, v.currentTime + 10);
-      });
-
-      on(this.dom.muteBtn, "click", () => {
-        v.muted = !v.muted;
-        this.updateVolumeIcon();
-      });
-      on(this.dom.volumeSlider, "input", (e) => {
-        v.volume = parseFloat(e.target.value);
-        v.muted = v.volume === 0;
+      $$(".hs-tab", this.dom.hsTabs).forEach(function (t) {
+        on(t, "click", function () {
+          $$(".hs-tab", self.dom.hsTabs).forEach(function (x) { x.classList.remove("active"); });
+          t.classList.add("active");
+          $$(".hs-pane").forEach(function (p) { p.classList.remove("active"); });
+          var pane = document.querySelector('.hs-pane[data-pane="' + t.dataset.tab + '"]');
+          if (pane) pane.classList.add("active");
+        });
       });
 
       // سرعت
-      on(this.dom.speedBtn, "click", (e) => {
-        e.stopPropagation();
-        this.dom.speedMenu.classList.toggle("show");
-      });
-      $$(".popup-item", this.dom.speedMenu).forEach((b) => {
-        on(b, "click", (e) => {
-          e.stopPropagation();
-          const s = parseFloat(b.dataset.speed);
-          v.playbackRate = s;
-          this.settings.defaultSpeed = s;
-          this.saveSettings();
-          $$(".popup-item", this.dom.speedMenu).forEach((x) => x.classList.remove("active"));
+      $$("#speedChips button").forEach(function (b) {
+        on(b, "click", function () {
+          var s = parseFloat(b.dataset.speed);
+          self.dom.videoPlayer.playbackRate = s;
+          self.settings.defaultSpeed = s;
+          self.saveSettings();
+          $$("#speedChips button").forEach(function (x) { x.classList.remove("active"); });
           b.classList.add("active");
-          this.dom.speedMenu.classList.remove("show");
-          toast("سرعت: " + s + "x", "info", 1400);
         });
       });
-      on(document, "click", (e) => {
-        if (!e.target.closest(".speed-wrap")) this.dom.speedMenu.classList.remove("show");
+
+      // ولوم
+      on(this.dom.volSlider, "input", function (e) {
+        var v = parseFloat(e.target.value);
+        self.dom.videoPlayer.volume = v;
+        self.dom.videoPlayer.muted = false;
+        self.settings.defaultVolume = v;
+        if (self.dom.volVal) self.dom.volVal.textContent = Math.round(v * 100) + "%";
+        self.saveSettings();
       });
 
-      // اسکرین‌شات
-      on(this.dom.screenshotBtn, "click", () => this.takeScreenshot());
-
-      // بوک‌مارک
-      on(this.dom.bookmarkBtn, "click", () => this.openBookmarkModal());
-
-      // یادداشت
-      on(this.dom.noteBtn, "click", () => this.openNoteModal());
-
-      // زیرنویس
-      on(this.dom.subtitleBtn, "click", () => this.openSubtitleModal());
-
-      // حلقه
-      on(this.dom.loopBtn, "click", () => {
-        this.dom.loopBtn.classList.toggle("active");
-        const on_ = this.dom.loopBtn.classList.contains("active");
-        toast(on_ ? "پخش حلقه‌ای روشن" : "پخش حلقه‌ای خاموش", "info", 1500);
+      // سوییچ‌ها
+      on(this.dom.loopToggle, "change", function (e) {
+        self.settings.loop = e.target.checked;
+        self.saveSettings();
+      });
+      on(this.dom.autoNextToggle, "change", function (e) {
+        self.settings.autoNext = e.target.checked;
+        self.saveSettings();
+      });
+      on(this.dom.rememberToggle, "change", function (e) {
+        self.settings.rememberProgress = e.target.checked;
+        self.saveSettings();
       });
 
       // AB Loop
-      on(this.dom.abLoopBtn, "click", () => this.toggleABLoop());
-
-      // فیلترها
-      on(this.dom.filtersBtn, "click", () => this.openModal("filtersModal"));
-
-      // چرخش
-      on(this.dom.rotateBtn, "click", () => {
-        const cur = parseInt(v.dataset.rotate || "0", 10);
-        const next = (cur + 90) % 360;
-        v.dataset.rotate = next;
-        v.style.transform = "rotate(" + next + "deg)";
+      on(this.dom.abSetA, "click", function () {
+        var v = self.dom.videoPlayer;
+        self.ab.a = v.currentTime;
+        self.dom.abSetA.classList.add("active");
+        toast("نقطه A: " + fmtTime(self.ab.a), "info");
       });
-
-      // آینه
-      on(this.dom.mirrorBtn, "click", () => {
-        const cur = v.dataset.mirror === "1";
-        v.dataset.mirror = cur ? "0" : "1";
-        v.style.transform = (v.style.transform || "") +
-          (cur ? "" : " scaleX(-1)");
-        // پاکسازی
-        if (cur) {
-          const rot = parseInt(v.dataset.rotate || "0", 10);
-          v.style.transform = rot ? "rotate(" + rot + "deg)" : "";
+      on(this.dom.abSetB, "click", function () {
+        var v = self.dom.videoPlayer;
+        if (self.ab.a === null) { toast("اول A رو ثبت کن", "error"); return; }
+        self.ab.b = v.currentTime;
+        if (self.ab.b <= self.ab.a) {
+          var t = self.ab.a; self.ab.a = self.ab.b; self.ab.b = t;
         }
+        self.dom.abSetB.classList.add("active");
+        self.updateABPosition();
+        toast("نقطه B: " + fmtTime(self.ab.b), "success");
       });
-
-      // PiP
-      on(this.dom.pipBtn, "click", async () => {
-        try {
-          if (document.pictureInPictureElement) {
-            await document.exitPictureInPicture();
-          } else {
-            await v.requestPictureInPicture();
-          }
-        } catch (e) {
-          toast("تصویر در تصویر پشتیبانی نمی‌شه", "error");
-        }
+      on(this.dom.abClear, "click", function () {
+        self.ab.a = null; self.ab.b = null;
+        self.dom.abSetA.classList.remove("active");
+        self.dom.abSetB.classList.remove("active");
+        self.dom.htAB.classList.remove("show");
+        toast("AB پاک شد", "info");
       });
 
       // تایمر خواب
-      on(this.dom.sleepTimerBtn, "click", () => this.openModal("sleepTimerModal"));
-
-      // تمام‌صفحه
-      on(this.dom.fullscreenBtn, "click", () => this.toggleFullscreen());
-      on(this.dom.videoWrapper, "dblclick", (e) => {
-        if (e.target.closest(".controls-bar")) return;
-        this.toggleFullscreen();
-      });
-
-      on(document, "fullscreenchange", () => {
-        const isFs = !!document.fullscreenElement;
-        const svg = this.dom.fullscreenIcon;
-        if (svg) {
-          if (isFs) {
-            svg.innerHTML = '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
-          } else {
-            svg.innerHTML = '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
-          }
-        }
+      $$("#sleepChips button").forEach(function (b) {
+        on(b, "click", function () {
+          $$("#sleepChips button").forEach(function (x) { x.classList.remove("active"); });
+          b.classList.add("active");
+          self.setSleep(b.dataset.sleep);
+        });
       });
     },
 
-    updateVolumeIcon() {
-      const v = this.dom.videoPlayer;
-      const svg = this.dom.volumeIcon;
-      if (!svg) return;
-      if (v.muted || v.volume === 0) {
-        svg.innerHTML = '<path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M22 9l-6 6M16 9l6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>';
-      } else if (v.volume < 0.5) {
-        svg.innerHTML = '<path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>';
-      } else {
-        svg.innerHTML = '<path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>';
-      }
-    },
-
-    toggleFullscreen() {
-      const el = this.dom.videoWrapper;
-      if (!document.fullscreenElement) {
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      } else {
-        if (document.exitFullscreen) document.exitFullscreen();
-      }
-    },
-
-    /* =================================================
-       AB Loop
-       ================================================= */
-    toggleABLoop() {
-      const v = this.dom.videoPlayer;
-      const ab = this.abLoop;
-      const btn = this.dom.abLoopBtn;
-
-      if (ab.a === null) {
-        ab.a = v.currentTime;
-        btn.classList.add("active");
-        toast("نقطه A: " + formatTime(ab.a), "info", 1600);
-      } else if (ab.b === null) {
-        ab.b = v.currentTime;
-        if (ab.b <= ab.a) {
-          const t = ab.a; ab.a = ab.b; ab.b = t;
-        }
-        this.showABOnTimeline();
-        toast("نقطه B: " + formatTime(ab.b), "success", 1600);
-      } else {
-        ab.a = null; ab.b = null;
-        btn.classList.remove("active");
-        this.dom.timelineAB.classList.remove("show");
-        toast("تکرار A-B خاموش", "info", 1400);
-      }
-    },
-
-    showABOnTimeline() {
-      const v = this.dom.videoPlayer;
-      const ab = this.abLoop;
-      if (ab.a === null || ab.b === null || !isFinite(v.duration)) return;
-      const el = this.dom.timelineAB;
+    updateABPosition: function () {
+      var v = this.dom.videoPlayer;
+      if (this.ab.a === null || this.ab.b === null || !isFinite(v.duration)) return;
+      var el = this.dom.htAB;
       el.classList.add("show");
-      el.style.left = (ab.a / v.duration * 100) + "%";
-      el.style.width = ((ab.b - ab.a) / v.duration * 100) + "%";
+      el.style.left = (this.ab.a / v.duration * 100) + "%";
+      el.style.width = ((this.ab.b - this.ab.a) / v.duration * 100) + "%";
     },
 
-    checkABLoop() {
-      const v = this.dom.videoPlayer;
-      const ab = this.abLoop;
-      if (ab.a !== null && ab.b !== null && v.currentTime >= ab.b) {
-        v.currentTime = ab.a;
+    checkAB: function () {
+      var v = this.dom.videoPlayer;
+      if (this.ab.a !== null && this.ab.b !== null && v.currentTime >= this.ab.b) {
+        v.currentTime = this.ab.a;
       }
     },
 
-    /* =================================================
-       اسکرین‌شات
-       ================================================= */
-    takeScreenshot() {
-      const v = this.dom.videoPlayer;
-      if (!v.src || !v.videoWidth) { toast("ویدیویی پخش نمی‌شه", "error"); return; }
+    setSleep: function (mode) {
+      if (this.sleepTimer) { clearTimeout(this.sleepTimer); this.sleepTimer = null; }
+      this.sleepEnd = false;
+
+      if (mode === "off") {
+        toast("تایمر خواب خاموش", "info");
+        return;
+      }
+      if (mode === "end") {
+        this.sleepEnd = true;
+        toast("پخش بعد از این ویدیو متوقف می‌شه", "info");
+        return;
+      }
+      var mins = parseInt(mode, 10);
+      var self = this;
+      this.sleepTimer = setTimeout(function () {
+        self.dom.videoPlayer.pause();
+        toast("تایمر خواب فعال شد", "info");
+        self.sleepTimer = null;
+      }, mins * 60000);
+      toast("تایمر خواب: " + mins + " دقیقه", "success");
+    },
+
+    /* =============================================
+       Subtitle Pane
+       ============================================= */
+    bindSubtitlePane: function () {
+      var self = this;
+
+      on(this.dom.subEnableToggle, "change", function (e) {
+        self.settings.subEnabled = e.target.checked;
+        self.saveSettings();
+        self.updateSubtitleCue(true);
+      });
+
+      on(this.dom.loadSubBtn, "click", function () {
+        self.dom.subtitleInput.click();
+      });
+
+      on(this.dom.subtitleInput, "change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (file) self.loadSubtitleFile(file);
+        self.dom.subtitleInput.value = "";
+      });
+
+      on(this.dom.subFontSelect, "change", function (e) {
+        self.settings.subFont = e.target.value;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subSizeSlider, "input", function (e) {
+        self.settings.subSize = parseInt(e.target.value, 10);
+        self.dom.subSizeVal.textContent = self.settings.subSize;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subWeightSlider, "input", function (e) {
+        self.settings.subWeight = parseInt(e.target.value, 10);
+        self.dom.subWeightVal.textContent = self.settings.subWeight;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subColorInput, "input", function (e) {
+        self.settings.subColor = e.target.value;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subAutoContrastToggle, "change", function (e) {
+        self.settings.subAutoContrast = e.target.checked;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subBgToggle, "change", function (e) {
+        self.settings.subBg = e.target.checked;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subBgColorInput, "input", function (e) {
+        self.settings.subBgColor = e.target.value;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subBgOpacitySlider, "input", function (e) {
+        self.settings.subBgOpacity = parseInt(e.target.value, 10);
+        self.dom.subBgOpacityVal.textContent = self.settings.subBgOpacity + "%";
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subRadiusSlider, "input", function (e) {
+        self.settings.subRadius = parseInt(e.target.value, 10);
+        self.dom.subRadiusVal.textContent = self.settings.subRadius;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+        self.updateSubPreview();
+      });
+
+      on(this.dom.subPosSlider, "input", function (e) {
+        self.settings.subPos = parseInt(e.target.value, 10);
+        self.dom.subPosVal.textContent = self.settings.subPos;
+        self.saveSettings();
+        self.applySubtitleStyleVars();
+      });
+    },
+
+    applySubtitleStyleVars: function () {
+      var s = this.settings;
+      var root = document.documentElement;
+      root.style.setProperty("--sub-font", s.subFont);
+      root.style.setProperty("--sub-size", s.subSize + "px");
+      root.style.setProperty("--sub-weight", s.subWeight);
+      root.style.setProperty("--sub-color", s.subColor);
+      root.style.setProperty("--sub-bg-op", (s.subBgOpacity / 100).toFixed(2));
+      root.style.setProperty("--sub-radius", s.subRadius + "px");
+
+      // موقعیت
+      if (this.dom.subtitleLayer) {
+        this.dom.subtitleLayer.style.paddingBottom = s.subPos + "%";
+      }
+    },
+
+    updateSubPreview: function () {
+      var el = this.dom.subPreview;
+      if (!el) return;
+      var s = this.settings;
+
+      el.textContent = "نمونه متن زیرنویس";
+      el.style.fontFamily = s.subFont;
+      el.style.fontSize = (s.subSize * 0.85) + "px";
+      el.style.fontWeight = s.subWeight;
+      el.style.color = s.subAutoContrast ? "#ffffff" : s.subColor;
+      el.style.borderRadius = s.subRadius + "px";
+
+      if (s.subBg) {
+        var rgb = hexToRgb(s.subBgColor);
+        el.style.background = "rgba(" + rgb + "," + (s.subBgOpacity / 100) + ")";
+      } else {
+        el.style.background = "transparent";
+      }
+
+      if (s.subAutoContrast) {
+        el.style.mixBlendMode = "difference";
+        el.style.textShadow = "none";
+      } else {
+        el.style.mixBlendMode = "normal";
+        el.style.textShadow = "0 1px 3px rgba(0,0,0,0.9)";
+      }
+    },
+
+    loadSubtitleFile: function (file) {
+      var self = this;
+      var item = this.playlist[this.currentIndex];
+      if (!item) {
+        toast("اول یه ویدیو پخش کن", "error");
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var cues = parseSubtitle(e.target.result);
+        if (!cues.length) {
+          toast("فایل زیرنویس معتبر نیست", "error");
+          return;
+        }
+        self.currentCues = cues;
+        self.subsByFile[item.id] = cues;
+        self.currentCueIdx = -1;
+        toast(cues.length + " خط زیرنویس لود شد", "success");
+      };
+      reader.readAsText(file, "UTF-8");
+    },
+
+    updateSubtitleCue: function (force) {
+      if (!this.dom.subtitleLayer) return;
+      var s = this.settings;
+      var v = this.dom.videoPlayer;
+      var layer = this.dom.subtitleLayer;
+
+      if (!s.subEnabled || !this.currentCues.length) {
+        if (layer.innerHTML) layer.innerHTML = "";
+        return;
+      }
+
+      var t = v.currentTime;
+      var activeIdx = -1;
+      for (var i = 0; i < this.currentCues.length; i++) {
+        var c = this.currentCues[i];
+        if (t >= c.start && t <= c.end) {
+          activeIdx = i;
+          break;
+        }
+      }
+
+      if (activeIdx === this.currentCueIdx && !force) return;
+      this.currentCueIdx = activeIdx;
+
+      if (activeIdx === -1) {
+        layer.innerHTML = "";
+        return;
+      }
+
+      var cue = this.currentCues[activeIdx];
+      layer.innerHTML = "";
+
+      var lines = cue.text.split("\n");
+      lines.forEach(function (line) {
+        var div = document.createElement("div");
+        div.className = "subtitle-cue";
+        if (!s.subBg) div.classList.add("no-bg");
+        if (s.subAutoContrast) div.classList.add("auto-contrast");
+        if (s.subBg && !s.subAutoContrast) {
+          var rgb = hexToRgb(s.subBgColor);
+          div.style.background = "rgba(" + rgb + "," + (s.subBgOpacity / 100) + ")";
+        } else if (s.subBg) {
+          var rgb2 = hexToRgb(s.subBgColor);
+          div.style.background = "rgba(" + rgb2 + "," + (s.subBgOpacity / 100) + ")";
+        }
+        div.style.borderRadius = s.subRadius + "px";
+        div.textContent = line;
+        layer.appendChild(div);
+      });
+    },
+
+    toggleSubtitleQuick: function () {
+      var s = this.settings;
+      if (!this.currentCues.length) {
+        // اگه زیرنویس لود نشده، فایل‌سیلکت رو باز کن
+        this.dom.subtitleInput.click();
+        return;
+      }
+      s.subEnabled = !s.subEnabled;
+      if (this.dom.subEnableToggle) this.dom.subEnableToggle.checked = s.subEnabled;
+      this.saveSettings();
+      this.updateSubtitleCue(true);
+      toast(s.subEnabled ? "زیرنویس روشن" : "زیرنویس خاموش", "info", 1400);
+    },
+
+    /* =============================================
+       Tools Pane
+       ============================================= */
+    bindToolsPane: function () {
+      var self = this;
+
+      on(this.dom.toolScreenshot, "click", function () { self.takeScreenshot(); });
+      on(this.dom.toolBookmark, "click", function () { self.openBookmarkModal(); });
+      on(this.dom.toolNote, "click", function () { self.openNoteModal(); });
+      on(this.dom.toolPip, "click", function () { self.togglePip(); });
+      on(this.dom.toolRotate, "click", function () { self.rotateVideo(); });
+      on(this.dom.toolMirror, "click", function () { self.mirrorVideo(); });
+      on(this.dom.toolFilters, "click", function () { self.closeHudSettings(); self.openModal("filtersModal"); });
+      on(this.dom.toolShortcuts, "click", function () { self.closeHudSettings(); self.openModal("shortcutsModal"); });
+    },
+
+    takeScreenshot: function () {
+      var v = this.dom.videoPlayer;
+      if (!v.src || !v.videoWidth) {
+        toast("ویدیویی پخش نمی‌شه", "error");
+        return;
+      }
       try {
-        const c = document.createElement("canvas");
+        var c = document.createElement("canvas");
         c.width = v.videoWidth;
         c.height = v.videoHeight;
         c.getContext("2d").drawImage(v, 0, 0);
-        const url = c.toDataURL("image/png");
-        this.dom.screenshotPreview.src = url;
+        var url = c.toDataURL("image/png");
         this._lastScreenshot = url;
+        this.dom.screenshotPreview.src = url;
         this.openModal("screenshotModal");
       } catch (e) {
-        toast("عکس‌برداری ناموفق", "error");
+        toast("عکس‌برداری ناموفق بود", "error");
       }
     },
 
-    /* =================================================
-       بوک‌مارک و یادداشت
-       ================================================= */
-    openBookmarkModal() {
-      const v = this.dom.videoPlayer;
+    openBookmarkModal: function () {
+      var v = this.dom.videoPlayer;
       if (!v.src) { toast("اول یه ویدیو پخش کن", "info"); return; }
-      this.dom.bookmarkTimeLabel.textContent = formatTime(v.currentTime);
+      this.dom.bookmarkTimeLabel.textContent = fmtTime(v.currentTime);
       this.dom.bookmarkNameInput.value = "";
       this._pendingBookmarkTime = v.currentTime;
+      this.closeHudSettings();
       this.openModal("bookmarkModal");
     },
 
-    saveBookmark() {
-      const item = this.playlist[this.currentIndex];
+    saveBookmark: function () {
+      var item = this.playlist[this.currentIndex];
       if (!item) return;
-      const name = (this.dom.bookmarkNameInput.value || "").trim() || "بوک‌مارک " + (this.bookmarks[item.id] || []).length + 1;
+      var name = (this.dom.bookmarkNameInput.value || "").trim();
+      if (!name) name = "بوک‌مارک " + ((this.bookmarks[item.id] || []).length + 1);
       if (!this.bookmarks[item.id]) this.bookmarks[item.id] = [];
-      this.bookmarks[item.id].push({ id: uid(), time: this._pendingBookmarkTime || 0, name: name });
+      this.bookmarks[item.id].push({
+        id: uid(),
+        time: this._pendingBookmarkTime || 0,
+        name: name
+      });
       saveLS("bookmarks", this.bookmarks);
       this.closeModal("bookmarkModal");
-      this.renderBookmarksOnTimeline();
+      this.renderMarksOnTimeline();
       toast("بوک‌مارک ذخیره شد", "success");
     },
 
-    openNoteModal() {
-      const v = this.dom.videoPlayer;
+    openNoteModal: function () {
+      var v = this.dom.videoPlayer;
       if (!v.src) { toast("اول یه ویدیو پخش کن", "info"); return; }
-      this.dom.noteTimeLabel.textContent = formatTime(v.currentTime);
+      this.dom.noteTimeLabel.textContent = fmtTime(v.currentTime);
       this.dom.noteTextInput.value = "";
       this._pendingNoteTime = v.currentTime;
+      this.closeHudSettings();
       this.openModal("noteModal");
     },
 
-    saveNote() {
-      const item = this.playlist[this.currentIndex];
+    saveNote: function () {
+      var item = this.playlist[this.currentIndex];
       if (!item) return;
-      const text = (this.dom.noteTextInput.value || "").trim();
+      var text = (this.dom.noteTextInput.value || "").trim();
       if (!text) { toast("متن یادداشت خالیه", "error"); return; }
       if (!this.notes[item.id]) this.notes[item.id] = [];
-      this.notes[item.id].push({ id: uid(), time: this._pendingNoteTime || 0, text: text });
+      this.notes[item.id].push({
+        id: uid(),
+        time: this._pendingNoteTime || 0,
+        text: text
+      });
       saveLS("notes", this.notes);
       this.closeModal("noteModal");
       toast("یادداشت ذخیره شد", "success");
     },
 
-    /* =================================================
-       زیرنویس
-       ================================================= */
-    openSubtitleModal() {
-      const item = this.playlist[this.currentIndex];
-      if (!item) { toast("اول یه ویدیو انتخاب کن", "info"); return; }
-      this.renderSubtitleList();
-      this.openModal("subtitleModal");
-    },
-
-    renderSubtitleList() {
-      const item = this.playlist[this.currentIndex];
-      const list = this.dom.subtitleList;
-      list.innerHTML = "";
-      if (!item) return;
-      const arr = this.subtitles[item.id] || [];
-      if (!arr.length) {
-        list.innerHTML = '<div class="empty-state"><p>زیرنویسی اضافه نشده</p></div>';
-        return;
-      }
-      arr.forEach((s, i) => {
-        const el = document.createElement("div");
-        el.className = "subtitle-item" + (s.active ? " active" : "");
-        el.textContent = s.name;
-        on(el, "click", () => {
-          const v = this.dom.videoPlayer;
-          $$("track", v).forEach((t) => t.remove());
-          const track = document.createElement("track");
-          track.kind = "subtitles";
-          track.label = s.name;
-          track.srclang = "fa";
-          track.src = s.url;
-          track.default = true;
-          v.appendChild(track);
-          s.active = true;
-          this.subtitlesEnabled = true;
-          this.renderSubtitleList();
-          toast("زیرنویس فعال شد", "success");
+    togglePip: function () {
+      var v = this.dom.videoPlayer;
+      if (document.pictureInPictureElement) {
+        document.exitPictureInPicture().catch(function () {});
+      } else if (v.requestPictureInPicture) {
+        v.requestPictureInPicture().catch(function () {
+          toast("تصویر در تصویر پشتیبانی نمی‌شه", "error");
         });
-        list.appendChild(el);
-      });
-    },
-
-    /* =================================================
-       گالری و نمایش عکس
-       ================================================= */
-    renderGallery() {
-      const grid = this.dom.galleryGrid;
-      if (!grid) return;
-      grid.innerHTML = "";
-
-      const q = (this.dom.playlistSearch.value || "").trim().toLowerCase();
-      let arr = this.gallery.slice();
-      const sortMode = this.dom.gallerySort ? this.dom.gallerySort.value : "date";
-      if (sortMode === "name") arr.sort((a, b) => a.name.localeCompare(b.name, "fa"));
-      if (sortMode === "size") arr.sort((a, b) => b.size - a.size);
-
-      const filtered = arr.filter((g) => g.name.toLowerCase().includes(q));
-
-      if (filtered.length === 0) {
-        this.dom.galleryEmpty.classList.remove("hidden");
       } else {
-        this.dom.galleryEmpty.classList.add("hidden");
+        toast("تصویر در تصویر پشتیبانی نمی‌شه", "error");
       }
+    },
 
-      filtered.forEach((img) => {
-        const el = document.createElement("div");
-        el.className = "gallery-item";
-        el.innerHTML =
-          '<img src="' + img.url + '" alt="' + this.escape(img.name) + '" loading="lazy">' +
-          '<div class="gallery-item-info">' + this.escape(img.name) + '</div>';
-        on(el, "click", () => this.openPhotoByItem(img));
-        on(el, "contextmenu", (e) => {
-          e.preventDefault();
-          this._contextPhoto = img;
-          this.openContextMenu(e.clientX, e.clientY, -1, true);
-        });
-        grid.appendChild(el);
+    rotateVideo: function () {
+      var v = this.dom.videoPlayer;
+      var cur = parseInt(v.dataset.rotate || "0", 10);
+      var next = (cur + 90) % 360;
+      v.dataset.rotate = next;
+      this.applyVideoTransform();
+    },
+
+    mirrorVideo: function () {
+      var v = this.dom.videoPlayer;
+      v.dataset.mirror = v.dataset.mirror === "1" ? "0" : "1";
+      this.applyVideoTransform();
+    },
+
+    applyVideoTransform: function () {
+      var v = this.dom.videoPlayer;
+      var rot = parseInt(v.dataset.rotate || "0", 10);
+      var mirror = v.dataset.mirror === "1";
+      var t = "";
+      if (rot) t += "rotate(" + rot + "deg) ";
+      if (mirror) t += "scaleX(-1)";
+      v.style.transform = t.trim();
+    },
+
+    renderMarksOnTimeline: function () {
+      var v = this.dom.videoPlayer;
+      var wrap = this.dom.htMarks;
+      if (!wrap) return;
+      wrap.innerHTML = "";
+      var item = this.playlist[this.currentIndex];
+      if (!item || !isFinite(v.duration)) return;
+      var arr = this.bookmarks[item.id] || [];
+      arr.forEach(function (b) {
+        var m = document.createElement("span");
+        m.className = "ht-mark";
+        m.style.left = (b.time / v.duration * 100) + "%";
+        m.title = b.name;
+        wrap.appendChild(m);
       });
     },
 
-    bindGallery() {
-      on(this.dom.gallerySort, "change", () => this.renderGallery());
+    /* =============================================
+       Appearance Pane
+       ============================================= */
+    bindAppearancePane: function () {
+      var self = this;
 
-      on(this.dom.gallerySlideShowBtn, "click", () => {
-        if (!this.gallery.length) { toast("عکسی نیست", "info"); return; }
-        let i = 0;
-        this.openPhotoByItem(this.gallery[0]);
-        const id = setInterval(() => {
-          if (this.dom.photoViewer.classList.contains("hidden")) {
-            clearInterval(id); return;
-          }
-          i = (i + 1) % this.gallery.length;
-          this.openPhotoByItem(this.gallery[i]);
-        }, 3500);
-      });
-    },
-
-    openPhotoByItem(item) {
-      const idx = this.gallery.indexOf(item);
-      this._photoIndex = idx >= 0 ? idx : 0;
-      this._photoScale = 1;
-      this._photoRotation = 0;
-      this._photoTranslate = { x: 0, y: 0 };
-
-      this.dom.photoImg.src = item.url;
-      this.dom.photoName.textContent = item.name;
-      this.dom.photoViewer.classList.remove("hidden");
-      this.applyPhotoTransform();
-    },
-
-    bindPhotoViewer() {
-      on(this.dom.photoClose, "click", () => this.closePhotoViewer());
-      on(this.dom.photoViewerBackdrop, "click", () => this.closePhotoViewer());
-
-      on(this.dom.photoPrev, "click", (e) => {
-        e.stopPropagation();
-        this.navigatePhoto(-1);
-      });
-      on(this.dom.photoNext, "click", (e) => {
-        e.stopPropagation();
-        this.navigatePhoto(1);
-      });
-
-      on(this.dom.photoZoomIn, "click", () => {
-        this._photoScale = clamp(this._photoScale * 1.2, 0.2, 6);
-        this.applyPhotoTransform();
-      });
-      on(this.dom.photoZoomOut, "click", () => {
-        this._photoScale = clamp(this._photoScale / 1.2, 0.2, 6);
-        this.applyPhotoTransform();
-      });
-      on(this.dom.photoRotate, "click", () => {
-        this._photoRotation = (this._photoRotation + 90) % 360;
-        this.applyPhotoTransform();
-      });
-      on(this.dom.photoReset, "click", () => {
-        this._photoScale = 1;
-        this._photoRotation = 0;
-        this._photoTranslate = { x: 0, y: 0 };
-        this.applyPhotoTransform();
-      });
-      on(this.dom.photoDownload, "click", () => {
-        const cur = this.gallery[this._photoIndex];
-        if (!cur) return;
-        const a = document.createElement("a");
-        a.href = cur.url;
-        a.download = cur.name;
-        a.click();
-      });
-
-      // pan با ماوس
-      let panning = false, startX = 0, startY = 0;
-      on(this.dom.photoStage, "mousedown", (e) => {
-        panning = true;
-        startX = e.clientX - this._photoTranslate.x;
-        startY = e.clientY - this._photoTranslate.y;
-      });
-      on(window, "mousemove", (e) => {
-        if (!panning) return;
-        this._photoTranslate.x = e.clientX - startX;
-        this._photoTranslate.y = e.clientY - startY;
-        this.applyPhotoTransform();
-      });
-      on(window, "mouseup", () => { panning = false; });
-
-      // wheel zoom
-      on(this.dom.photoStage, "wheel", (e) => {
-        e.preventDefault();
-        const delta = e.deltaY < 0 ? 1.1 : 0.9;
-        this._photoScale = clamp(this._photoScale * delta, 0.2, 6);
-        this.applyPhotoTransform();
-      }, { passive: false });
-
-      // کیبورد فقط برای عکس
-      on(window, "keydown", (e) => {
-        if (this.dom.photoViewer.classList.contains("hidden")) return;
-        if (e.key === "ArrowLeft") this.navigatePhoto(1);
-        if (e.key === "ArrowRight") this.navigatePhoto(-1);
-        if (e.key === "Escape") this.closePhotoViewer();
-      });
-    },
-
-    applyPhotoTransform() {
-      this.dom.photoImg.style.transform =
-        "translate(" + this._photoTranslate.x + "px," + this._photoTranslate.y + "px) " +
-        "scale(" + this._photoScale + ") rotate(" + this._photoRotation + "deg)";
-    },
-
-    navigatePhoto(dir) {
-      if (!this.gallery.length) return;
-      this._photoIndex = (this._photoIndex + dir + this.gallery.length) % this.gallery.length;
-      const item = this.gallery[this._photoIndex];
-      this.dom.photoImg.src = item.url;
-      this.dom.photoName.textContent = item.name;
-      this._photoScale = 1;
-      this._photoRotation = 0;
-      this._photoTranslate = { x: 0, y: 0 };
-      this.applyPhotoTransform();
-    },
-
-    closePhotoViewer() {
-      this.dom.photoViewer.classList.add("hidden");
-    },
-
-    /* =================================================
-       پنل تنظیمات
-       ================================================= */
-    bindSettingsPanel() {
-      on(this.dom.settingsClose, "click", () => this.closeSettings());
-      on(this.dom.settingsOverlay, "click", () => this.closeSettings());
-
-      $$(".segmented button", this.dom.themeSegment).forEach((b) => {
-        on(b, "click", () => {
-          this.setTheme(b.dataset.theme);
-          this.applySettings();
+      $$("#themeChips button").forEach(function (b) {
+        on(b, "click", function () {
+          self.setTheme(b.dataset.theme);
+          $$("#themeChips button").forEach(function (x) { x.classList.remove("active"); });
+          b.classList.add("active");
         });
       });
 
-      on(this.dom.glassOpacitySlider, "input", (e) => {
-        this.settings.glassOpacity = parseInt(e.target.value, 10);
-        this.dom.glassOpacityValue.textContent = this.settings.glassOpacity + "%";
-        this.applySettings();
-        this.saveSettings();
+      on(this.dom.glassOpSlider, "input", function (e) {
+        self.settings.glassOpacity = parseInt(e.target.value, 10);
+        if (self.dom.glassOpVal) self.dom.glassOpVal.textContent = self.settings.glassOpacity + "%";
+        document.documentElement.style.setProperty("--glass-alpha", (self.settings.glassOpacity / 100).toFixed(2));
+        self.saveSettings();
       });
 
-      on(this.dom.blurIntensitySlider, "input", (e) => {
-        this.settings.blurIntensity = parseInt(e.target.value, 10);
-        this.dom.blurIntensityValue.textContent = this.settings.blurIntensity + "px";
-        this.applySettings();
-        this.saveSettings();
+      on(this.dom.blurSlider, "input", function (e) {
+        self.settings.blurIntensity = parseInt(e.target.value, 10);
+        if (self.dom.blurVal) self.dom.blurVal.textContent = self.settings.blurIntensity + "px";
+        document.documentElement.style.setProperty("--blur", self.settings.blurIntensity + "px");
+        self.saveSettings();
       });
 
-      on(this.dom.bloomIntensitySlider, "input", (e) => {
-        this.settings.bloomIntensity = parseInt(e.target.value, 10);
-        this.dom.bloomIntensityValue.textContent = this.settings.bloomIntensity + "%";
-        this.applySettings();
-        this.saveSettings();
+      on(this.dom.reduceMotionToggle, "change", function (e) {
+        self.settings.reduceMotion = e.target.checked;
+        document.body.classList.toggle("reduce-motion", e.target.checked);
+        self.saveSettings();
       });
 
-      on(this.dom.reduceMotionToggle, "change", (e) => {
-        this.settings.reduceMotion = e.target.checked;
-        this.applySettings();
-        this.saveSettings();
+      on(this.dom.exportSettingsBtn, "click", function () { self.exportSettings(); });
+      on(this.dom.importSettingsBtn, "click", function () { self.dom.importInput.click(); });
+      on(this.dom.importInput, "change", function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (file) self.importSettings(file);
+        self.dom.importInput.value = "";
       });
 
-      on(this.dom.highContrastToggle, "change", (e) => {
-        this.settings.highContrast = e.target.checked;
-        this.applySettings();
-        this.saveSettings();
-      });
-
-      on(this.dom.defaultVolumeSlider, "input", (e) => {
-        this.settings.defaultVolume = parseFloat(e.target.value);
-        this.dom.defaultVolumeValue.textContent = Math.round(this.settings.defaultVolume * 100) + "%";
-        this.dom.videoPlayer.volume = this.settings.defaultVolume;
-        this.saveSettings();
-      });
-
-      on(this.dom.defaultSpeedSelect, "change", (e) => {
-        this.settings.defaultSpeed = parseFloat(e.target.value);
-        this.dom.videoPlayer.playbackRate = this.settings.defaultSpeed;
-        this.saveSettings();
-      });
-
-      on(this.dom.autoPlayToggle, "change", (e) => {
-        this.settings.autoPlay = e.target.checked;
-        this.saveSettings();
-      });
-
-      on(this.dom.autoNextToggle, "change", (e) => {
-        this.settings.autoNext = e.target.checked;
-        this.saveSettings();
-      });
-
-      on(this.dom.rememberProgressToggle, "change", (e) => {
-        this.settings.rememberProgress = e.target.checked;
-        this.saveSettings();
-      });
-
-      on(this.dom.subtitleSizeSlider, "input", (e) => {
-        this.settings.subtitleSize = parseInt(e.target.value, 10);
-        this.dom.subtitleSizeValue.textContent = this.settings.subtitleSize;
-        this.applySubtitleStyle();
-        this.saveSettings();
-      });
-
-      on(this.dom.subtitleColorInput, "input", (e) => {
-        this.settings.subtitleColor = e.target.value;
-        this.applySubtitleStyle();
-        this.saveSettings();
-      });
-
-      on(this.dom.subtitleBgToggle, "change", (e) => {
-        this.settings.subtitleBg = e.target.checked;
-        this.applySubtitleStyle();
-        this.saveSettings();
-      });
-
-      on(this.dom.exportSettingsBtn, "click", () => this.exportSettings());
-      on(this.dom.importSettingsBtn, "click", () => this.dom.importSettingsInput.click());
-      on(this.dom.importSettingsInput, "change", (e) => this.importSettings(e.target.files[0]));
-      on(this.dom.resetSettingsBtn, "click", () => {
-        if (!confirm("همه‌ی تنظیمات به حالت اولیه برگرده؟")) return;
-        localStorage.removeItem("liquidplay.settings");
+      on(this.dom.resetSettingsBtn, "click", function () {
+        if (!confirm("همه تنظیمات به حالت اولیه برگرده؟")) return;
+        try { localStorage.removeItem("liquidplay.settings"); } catch (e) {}
         location.reload();
       });
     },
 
-    applySubtitleStyle() {
-      const v = this.dom.videoPlayer;
-      const tracks = $$("track", v);
-      tracks.forEach((t) => {
-        t.style.fontSize = this.settings.subtitleSize + "px";
-      });
-    },
-
-    openSettings() {
-      this.dom.settingsPanel.classList.add("open");
-      this.dom.settingsOverlay.classList.remove("hidden");
-      requestAnimationFrame(() => this.dom.settingsOverlay.classList.add("show"));
-    },
-
-    closeSettings() {
-      this.dom.settingsPanel.classList.remove("open");
-      this.dom.settingsOverlay.classList.remove("show");
-      setTimeout(() => this.dom.settingsOverlay.classList.add("hidden"), 300);
-    },
-
-    exportSettings() {
-      const data = {
+    exportSettings: function () {
+      var data = {
         settings: this.settings,
         bookmarks: this.bookmarks,
         notes: this.notes,
         history: this.history
       };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
+      var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
       a.href = url;
       a.download = "liquidplay-backup.json";
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
       toast("پشتیبان دانلود شد", "success");
     },
 
-    importSettings(file) {
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
+    importSettings: function (file) {
+      var self = this;
+      var reader = new FileReader();
+      reader.onload = function (e) {
         try {
-          const data = JSON.parse(e.target.result);
-          if (data.settings) this.settings = Object.assign(this.settings, data.settings);
-          if (data.bookmarks) this.bookmarks = data.bookmarks;
-          if (data.notes) this.notes = data.notes;
-          if (data.history) this.history = data.history;
-          saveLS("settings", this.settings);
-          saveLS("bookmarks", this.bookmarks);
-          saveLS("notes", this.notes);
-          saveLS("history", this.history);
-          this.applySettings();
+          var data = JSON.parse(e.target.result);
+          if (data.settings) self.settings = Object.assign(self.settings, data.settings);
+          if (data.bookmarks) self.bookmarks = data.bookmarks;
+          if (data.notes) self.notes = data.notes;
+          if (data.history) self.history = data.history;
+          saveLS("settings", self.settings);
+          saveLS("bookmarks", self.bookmarks);
+          saveLS("notes", self.notes);
+          saveLS("history", self.history);
+          self.applySettings();
           toast("تنظیمات بازیابی شد", "success");
         } catch (er) {
           toast("فایل نامعتبر", "error");
         }
       };
       reader.readAsText(file);
-      this.dom.importSettingsInput.value = "";
     },
 
-    /* =================================================
-       مودال‌ها
-       ================================================= */
-    bindModals() {
-      // دکمه‌های بستن
-      $$("[data-close-modal]").forEach((b) => {
-        on(b, "click", () => this.closeModal(b.dataset.closeModal));
+    /* =============================================
+       Gallery
+       ============================================= */
+    renderGallery: function () {
+      var self = this;
+      var grid = this.dom.galleryGrid;
+      if (!grid) return;
+      grid.innerHTML = "";
+
+      var arr = this.gallery.slice();
+      var sortMode = this.dom.gallerySort ? this.dom.gallerySort.value : "date";
+      if (sortMode === "name") arr.sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "fa"); });
+      if (sortMode === "size") arr.sort(function (a, b) { return (b.size || 0) - (a.size || 0); });
+
+      if (!arr.length) {
+        this.dom.galleryEmpty.classList.remove("hidden");
+        return;
+      } else {
+        this.dom.galleryEmpty.classList.add("hidden");
+      }
+
+      arr.forEach(function (img) {
+        var el = document.createElement("div");
+        el.className = "gallery-item";
+        el.innerHTML =
+          '<img src="' + img.url + '" alt="" loading="lazy">' +
+          '<div class="gallery-item-info">' + esc(img.name) + '</div>';
+        on(el, "click", function () { self.openPhotoByItem(img); });
+        grid.appendChild(el);
       });
+    },
 
-      $$(".modal-overlay").forEach((ov) => {
-        on(ov, "click", (e) => {
-          if (e.target === ov) this.closeModal(ov.id);
-        });
+    bindGallery: function () {
+      var self = this;
+
+      on(this.dom.gallerySort, "change", function () { self.renderGallery(); });
+
+      on(this.dom.gallerySlideBtn, "click", function () {
+        if (!self.gallery.length) { toast("عکسی نیست", "info"); return; }
+        self.startSlideShow();
       });
+    },
 
-      // ذخیره بوک‌مارک
-      on(this.dom.bookmarkSaveBtn, "click", () => this.saveBookmark());
+    startSlideShow: function () {
+      var self = this;
+      var i = 0;
+      self.openPhotoByItem(self.gallery[0]);
+      if (this._slideTimer) clearInterval(this._slideTimer);
+      this._slideTimer = setInterval(function () {
+        if (self.dom.photoViewer.classList.contains("hidden")) {
+          clearInterval(self._slideTimer);
+          self._slideTimer = null;
+          return;
+        }
+        i = (i + 1) % self.gallery.length;
+        self.openPhotoByItem(self.gallery[i]);
+      }, 3500);
+    },
 
-      // ذخیره یادداشت
-      on(this.dom.noteSaveBtn, "click", () => this.saveNote());
+    /* =============================================
+       Photo Viewer
+       ============================================= */
+    openPhotoByItem: function (item) {
+      var idx = this.gallery.indexOf(item);
+      this._photoIndex = idx >= 0 ? idx : 0;
+      this._photoScale = 1;
+      this._photoRotation = 0;
+      this._photoTranslate = { x: 0, y: 0 };
 
-      // دانلود اسکرین‌شات
-      on(this.dom.screenshotDownloadBtn, "click", () => {
-        if (!this._lastScreenshot) return;
-        const a = document.createElement("a");
-        a.href = this._lastScreenshot;
-        a.download = "liquidplay-screenshot-" + Date.now() + ".png";
+      this.dom.pvImg.src = item.url;
+      this.dom.pvName.textContent = item.name;
+      this.dom.photoViewer.classList.remove("hidden");
+      this.applyPhotoTransform();
+    },
+
+    bindPhotoViewer: function () {
+      var self = this;
+
+      on(this.dom.pvClose, "click", function () { self.closePhotoViewer(); });
+      on(this.dom.pvBackdrop, "click", function () { self.closePhotoViewer(); });
+
+      on(this.dom.pvPrev, "click", function (e) { e.stopPropagation(); self.navigatePhoto(-1); });
+      on(this.dom.pvNext, "click", function (e) { e.stopPropagation(); self.navigatePhoto(1); });
+
+      on(this.dom.pvZoomIn, "click", function () {
+        self._photoScale = clamp(self._photoScale * 1.2, 0.2, 6);
+        self.applyPhotoTransform();
+      });
+      on(this.dom.pvZoomOut, "click", function () {
+        self._photoScale = clamp(self._photoScale / 1.2, 0.2, 6);
+        self.applyPhotoTransform();
+      });
+      on(this.dom.pvRotate, "click", function () {
+        self._photoRotation = (self._photoRotation + 90) % 360;
+        self.applyPhotoTransform();
+      });
+      on(this.dom.pvReset, "click", function () {
+        self._photoScale = 1;
+        self._photoRotation = 0;
+        self._photoTranslate = { x: 0, y: 0 };
+        self.applyPhotoTransform();
+      });
+      on(this.dom.pvDownload, "click", function () {
+        var cur = self.gallery[self._photoIndex];
+        if (!cur) return;
+        var a = document.createElement("a");
+        a.href = cur.url;
+        a.download = cur.name;
         a.click();
       });
 
-      // کپی اسکرین‌شات
-      on(this.dom.screenshotCopyBtn, "click", async () => {
-        if (!this._lastScreenshot) return;
-        try {
-          const blob = await (await fetch(this._lastScreenshot)).blob();
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-          toast("کپی شد", "success");
-        } catch (e) {
-          toast("کپی ناموفق", "error");
-        }
+      // Pan
+      var panning = false, sx = 0, sy = 0;
+      on(this.dom.pvStage, "mousedown", function (e) {
+        panning = true;
+        sx = e.clientX - self._photoTranslate.x;
+        sy = e.clientY - self._photoTranslate.y;
+      });
+      on(window, "mousemove", function (e) {
+        if (!panning) return;
+        self._photoTranslate.x = e.clientX - sx;
+        self._photoTranslate.y = e.clientY - sy;
+        self.applyPhotoTransform();
+      });
+      on(window, "mouseup", function () { panning = false; });
+
+      // Wheel zoom
+      on(this.dom.pvStage, "wheel", function (e) {
+        e.preventDefault();
+        var d = e.deltaY < 0 ? 1.1 : 0.9;
+        self._photoScale = clamp(self._photoScale * d, 0.2, 6);
+        self.applyPhotoTransform();
+      }, { passive: false });
+    },
+
+    applyPhotoTransform: function () {
+      this.dom.pvImg.style.transform =
+        "translate(" + this._photoTranslate.x + "px," + this._photoTranslate.y + "px) " +
+        "scale(" + this._photoScale + ") rotate(" + this._photoRotation + "deg)";
+    },
+
+    navigatePhoto: function (dir) {
+      if (!this.gallery.length) return;
+      this._photoIndex = (this._photoIndex + dir + this.gallery.length) % this.gallery.length;
+      var item = this.gallery[this._photoIndex];
+      this.dom.pvImg.src = item.url;
+      this.dom.pvName.textContent = item.name;
+      this._photoScale = 1;
+      this._photoRotation = 0;
+      this._photoTranslate = { x: 0, y: 0 };
+      this.applyPhotoTransform();
+    },
+
+    closePhotoViewer: function () {
+      this.dom.photoViewer.classList.add("hidden");
+      if (this._slideTimer) {
+        clearInterval(this._slideTimer);
+        this._slideTimer = null;
+      }
+    },
+
+    /* =============================================
+       Modals
+       ============================================= */
+    openModal: function (id) {
+      var m = $(id);
+      if (!m) return;
+      m.classList.remove("hidden");
+    },
+
+    closeModal: function (id) {
+      var m = $(id);
+      if (!m) return;
+      m.classList.add("hidden");
+    },
+
+    bindModals: function () {
+      var self = this;
+
+      $$("[data-close-modal]").forEach(function (b) {
+        on(b, "click", function () { self.closeModal(b.dataset.closeModal); });
       });
 
-      // تایمر خواب
-      $$("[data-sleep]", this.dom.sleepTimerModal).forEach((b) => {
-        on(b, "click", () => this.setSleepTimer(b.dataset.sleep));
+      $$(".modal").forEach(function (m) {
+        on(m, "click", function (e) {
+          if (e.target === m) self.closeModal(m.id);
+        });
       });
 
-      // زیرنویس
-      on(this.dom.loadSubtitleBtn, "click", () => this.dom.subtitleInput.click());
-      on(this.dom.subtitleInput, "change", (e) => this.loadSubtitleFile(e.target.files[0]));
-      on(this.dom.removeSubtitleBtn, "click", () => {
-        const item = this.playlist[this.currentIndex];
-        if (!item) return;
-        this.subtitles[item.id] = [];
-        $$("track", this.dom.videoPlayer).forEach((t) => t.remove());
-        this.renderSubtitleList();
-        toast("زیرنویس حذف شد", "info");
+      on(this.dom.bookmarkSaveBtn, "click", function () { self.saveBookmark(); });
+      on(this.dom.noteSaveBtn, "click", function () { self.saveNote(); });
+
+      on(this.dom.screenshotDownloadBtn, "click", function () {
+        if (!self._lastScreenshot) return;
+        var a = document.createElement("a");
+        a.href = self._lastScreenshot;
+        a.download = "screenshot-" + Date.now() + ".png";
+        a.click();
+      });
+
+      on(this.dom.screenshotCopyBtn, "click", function () {
+        if (!self._lastScreenshot) return;
+        fetch(self._lastScreenshot)
+          .then(function (r) { return r.blob(); })
+          .then(function (blob) {
+            return navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          })
+          .then(function () { toast("کپی شد", "success"); })
+          .catch(function () { toast("کپی ناموفق", "error"); });
       });
 
       // فیلترها
-      const bindFilter = (el, valEl, key, suffix) => {
-        on(el, "input", () => {
-          const val = el.value;
-          valEl.textContent = val + (suffix || "");
-          this.applyFilters();
+      var bindFilter = function (el, valEl, key, suffix) {
+        on(el, "input", function () {
+          if (valEl) valEl.textContent = el.value + (suffix || "");
+          self.applyFilters();
         });
       };
-      bindFilter(this.dom.filterBrightness, this.dom.filterBrightnessValue, "brightness", "%");
-      bindFilter(this.dom.filterContrast, this.dom.filterContrastValue, "contrast", "%");
-      bindFilter(this.dom.filterSaturate, this.dom.filterSaturateValue, "saturate", "%");
-      bindFilter(this.dom.filterHue, this.dom.filterHueValue, "hue", "");
-      bindFilter(this.dom.filterBlur, this.dom.filterBlurValue, "blur", "px");
+      bindFilter(this.dom.fBrightness, this.dom.fBriVal, "brightness", "%");
+      bindFilter(this.dom.fContrast, this.dom.fConVal, "contrast", "%");
+      bindFilter(this.dom.fSaturate, this.dom.fSatVal, "saturate", "%");
+      bindFilter(this.dom.fHue, this.dom.fHueVal, "hue", "");
+      bindFilter(this.dom.fBlur, this.dom.fBlurVal, "blur", "px");
 
-      on(this.dom.resetFiltersBtn, "click", () => {
-        this.dom.filterBrightness.value = 100;
-        this.dom.filterContrast.value = 100;
-        this.dom.filterSaturate.value = 100;
-        this.dom.filterHue.value = 0;
-        this.dom.filterBlur.value = 0;
-        this.dom.filterBrightnessValue.textContent = "100%";
-        this.dom.filterContrastValue.textContent = "100%";
-        this.dom.filterSaturateValue.textContent = "100%";
-        this.dom.filterHueValue.textContent = "0";
-        this.dom.filterBlurValue.textContent = "0px";
-        this.applyFilters();
+      on(this.dom.resetFiltersBtn, "click", function () {
+        self.dom.fBrightness.value = 100;
+        self.dom.fContrast.value = 100;
+        self.dom.fSaturate.value = 100;
+        self.dom.fHue.value = 0;
+        self.dom.fBlur.value = 0;
+        if (self.dom.fBriVal) self.dom.fBriVal.textContent = "100%";
+        if (self.dom.fConVal) self.dom.fConVal.textContent = "100%";
+        if (self.dom.fSatVal) self.dom.fSatVal.textContent = "100%";
+        if (self.dom.fHueVal) self.dom.fHueVal.textContent = "0";
+        if (self.dom.fBlurVal) self.dom.fBlurVal.textContent = "0px";
+        self.applyFilters();
       });
     },
 
-    applyFilters() {
-      const v = this.dom.videoPlayer;
-      const b = this.dom.filterBrightness.value;
-      const c = this.dom.filterContrast.value;
-      const s = this.dom.filterSaturate.value;
-      const h = this.dom.filterHue.value;
-      const bl = this.dom.filterBlur.value;
-      v.style.filter =
-        "brightness(" + b + "%) contrast(" + c + "%) saturate(" + s + "%) hue-rotate(" + h + "deg) blur(" + bl + "px)";
+    applyFilters: function () {
+      var v = this.dom.videoPlayer;
+      var b = this.dom.fBrightness.value;
+      var c = this.dom.fContrast.value;
+      var s = this.dom.fSaturate.value;
+      var h = this.dom.fHue.value;
+      var bl = this.dom.fBlur.value;
+      v.style.filter = "brightness(" + b + "%) contrast(" + c + "%) saturate(" + s + "%) hue-rotate(" + h + "deg) blur(" + bl + "px)";
     },
 
-    loadSubtitleFile(file) {
-      if (!file) return;
-      const item = this.playlist[this.currentIndex];
-      if (!item) return;
-      const url = URL.createObjectURL(file);
-      if (!this.subtitles[item.id]) this.subtitles[item.id] = [];
-      this.subtitles[item.id].push({ name: file.name, url: url, active: false });
-      this.renderSubtitleList();
-      toast("زیرنویس اضافه شد", "success");
-    },
-
-    setSleepTimer(mode) {
-      if (this.sleepTimer) { clearTimeout(this.sleepTimer); this.sleepTimer = null; }
-      this.sleepEndOfVideo = false;
-
-      if (mode === "off") {
-        toast("تایمر خواب خاموش", "info");
-        this.closeModal("sleepTimerModal");
-        return;
-      }
-      if (mode === "end") {
-        this.sleepEndOfVideo = true;
-        toast("پخش بعد از این ویدیو متوقف می‌شه", "info");
-        this.closeModal("sleepTimerModal");
-        return;
-      }
-      const mins = parseInt(mode, 10);
-      this.sleepTimer = setTimeout(() => {
-        this.dom.videoPlayer.pause();
-        toast("تایمر خواب فعال شد", "info");
-        this.sleepTimer = null;
-      }, mins * 60000);
-      toast("تایمر خواب: " + mins + " دقیقه", "success");
-      this.closeModal("sleepTimerModal");
-    },
-
-    openModal(id) {
-      const m = $(id);
-      if (!m) return;
-      m.classList.remove("hidden");
-      requestAnimationFrame(() => m.classList.add("show"));
-    },
-
-    closeModal(id) {
-      const m = $(id);
-      if (!m) return;
-      m.classList.remove("show");
-      setTimeout(() => m.classList.add("hidden"), 260);
-    },
-
-    /* =================================================
-       کیبورد
-       ================================================= */
-    bindKeyboard() {
-      on(window, "keydown", (e) => {
-        // اگه توی input بودیم، کاری نکن
-        const tag = (e.target.tagName || "").toLowerCase();
+    /* =============================================
+       Keyboard
+       ============================================= */
+    bindKeyboard: function () {
+      var self = this;
+      on(window, "keydown", function (e) {
+        var tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+        if (!self.dom.photoViewer.classList.contains("hidden")) {
+          if (e.key === "ArrowLeft") self.navigatePhoto(1);
+          if (e.key === "ArrowRight") self.navigatePhoto(-1);
+          if (e.key === "Escape") self.closePhotoViewer();
+          return;
+        }
 
-        // عکس بازه؟
-        if (!this.dom.photoViewer.classList.contains("hidden")) return;
-
-        const v = this.dom.videoPlayer;
+        var v = self.dom.videoPlayer;
 
         switch (e.key) {
           case " ":
           case "k":
+          case "K":
             e.preventDefault();
-            this.togglePlay();
+            self.togglePlay();
             break;
           case "ArrowLeft":
             e.preventDefault();
             v.currentTime = Math.max(0, v.currentTime - 5);
+            self.showHud(true);
             break;
           case "ArrowRight":
             e.preventDefault();
             v.currentTime = Math.min(v.duration || 0, v.currentTime + 5);
+            self.showHud(true);
             break;
           case "j":
           case "J":
@@ -1800,106 +2077,90 @@
             e.preventDefault();
             v.volume = clamp(v.volume + 0.05, 0, 1);
             v.muted = false;
-            toast("صدا: " + Math.round(v.volume * 100) + "%", "info", 900);
             break;
           case "ArrowDown":
             e.preventDefault();
             v.volume = clamp(v.volume - 0.05, 0, 1);
-            toast("صدا: " + Math.round(v.volume * 100) + "%", "info", 900);
             break;
           case "m":
           case "M":
             v.muted = !v.muted;
-            this.updateVolumeIcon();
             break;
           case "f":
           case "F":
-            this.toggleFullscreen();
+            self.toggleFullscreen();
             break;
           case "p":
           case "P":
-            if (document.pictureInPictureElement) document.exitPictureInPicture();
-            else v.requestPictureInPicture && v.requestPictureInPicture().catch(() => {});
-            break;
-          case "+":
-          case "=":
-            v.playbackRate = clamp(v.playbackRate + 0.25, 0.25, 3);
-            this.dom.speedLabel.textContent = v.playbackRate + "x";
-            break;
-          case "-":
-          case "_":
-            v.playbackRate = clamp(v.playbackRate - 0.25, 0.25, 3);
-            this.dom.speedLabel.textContent = v.playbackRate + "x";
+            self.togglePip();
             break;
           case "s":
           case "S":
-            this.takeScreenshot();
+            self.takeScreenshot();
             break;
           case "b":
           case "B":
-            this.openBookmarkModal();
+            self.openBookmarkModal();
             break;
           case "n":
           case "N":
-            this.openNoteModal();
+            self.openNoteModal();
             break;
           case "Escape":
-            this.closeSettings();
-            $$(".modal-overlay.show").forEach((m) => this.closeModal(m.id));
+            self.closeHudSettings();
+            self.closeSidebar();
+            $$(".modal").forEach(function (m) { self.closeModal(m.id); });
             break;
-          default:
-            // اعداد برای پرش درصدی
-            if (/^[0-9]$/.test(e.key) && isFinite(v.duration)) {
-              v.currentTime = (parseInt(e.key, 10) / 10) * v.duration;
-            }
         }
       });
     },
 
-    /* =================================================
-       ژست‌ها
-       ================================================= */
-    bindGestures() {
-      const wrap = this.dom.videoWrapper;
-      const v = this.dom.videoPlayer;
-      if (!wrap) return;
+    /* =============================================
+       Gestures
+       ============================================= */
+    bindGestures: function () {
+      var self = this;
+      var stage = this.dom.videoStage;
+      var v = this.dom.videoPlayer;
+      if (!stage) return;
 
-      let startX = 0, startY = 0, startTime = 0, startVolume = 0, startBrightness = 100;
-      let gestureMode = null; // 'seek' | 'volume' | 'brightness'
-      let lastTap = 0;
-      let lastTapX = 0;
+      var startX = 0, startY = 0, startTime = 0, startVol = 0, startBri = 100;
+      var mode = null, moved = false;
+      var ind = this.dom.gestureIndicator;
+      var ic = this.dom.gestureIcon;
+      var val = this.dom.gestureValue;
 
-      const indicator = this.dom.gestureIndicator;
-      const iconEl = this.dom.gestureIcon;
-      const valEl = this.dom.gestureValue;
+      function showInd(icon, text) {
+        if (!ind) return;
+        if (ic) ic.textContent = icon;
+        if (val) val.textContent = text;
+        ind.classList.add("show");
+      }
+      function hideInd() {
+        if (ind) ind.classList.remove("show");
+      }
 
-      const showInd = (icon, val) => {
-        iconEl.textContent = icon;
-        valEl.textContent = val;
-        indicator.classList.add("show");
-      };
-      const hideInd = () => indicator.classList.remove("show");
+      function isLeft(clientX) {
+        var r = stage.getBoundingClientRect();
+        return (clientX - r.left) < r.width / 2;
+      }
 
-      const isLeftZone = (x) => {
-        const r = wrap.getBoundingClientRect();
-        return (x - r.left) < r.width / 2;
-      };
-
-      on(wrap, "touchstart", (e) => {
+      on(stage, "touchstart", function (e) {
         if (e.touches.length !== 1) return;
-        const t = e.touches[0];
+        var t = e.touches[0];
         startX = t.clientX;
         startY = t.clientY;
         startTime = v.currentTime;
-        startVolume = v.volume;
-        startBrightness = 100;
-        gestureMode = null;
+        startVol = v.volume;
+        startBri = 100;
+        mode = null;
+        moved = false;
 
         // double tap
-        const now = Date.now();
-        if (now - lastTap < 300 && Math.abs(t.clientX - lastTapX) < 40) {
-          const r = wrap.getBoundingClientRect();
-          const mid = r.left + r.width / 2;
+        var now = Date.now();
+        if (now - self.lastTapTime < 300 && Math.abs(t.clientX - self.lastTapX) < 50) {
+          var r = stage.getBoundingClientRect();
+          var mid = r.left + r.width / 2;
           if (t.clientX < mid) {
             v.currentTime = Math.max(0, v.currentTime - 10);
             showInd("◀◀", "10-");
@@ -1908,158 +2169,90 @@
             showInd("▶▶", "10+");
           }
           setTimeout(hideInd, 500);
-          lastTap = 0;
+          self.lastTapTime = 0;
           return;
         }
-        lastTap = now;
-        lastTapX = t.clientX;
+        self.lastTapTime = now;
+        self.lastTapX = t.clientX;
       }, { passive: true });
 
-      on(wrap, "touchmove", (e) => {
+      on(stage, "touchmove", function (e) {
         if (e.touches.length !== 1) return;
-        const t = e.touches[0];
-        const dx = t.clientX - startX;
-        const dy = t.clientY - startY;
+        var t = e.touches[0];
+        var dx = t.clientX - startX;
+        var dy = t.clientY - startY;
 
-        if (!gestureMode) {
-          if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 15) gestureMode = "seek";
-          else if (Math.abs(dy) > 15) {
-            gestureMode = isLeftZone(startX) ? "brightness" : "volume";
-          }
+        if (!mode) {
+          if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 14) mode = "seek";
+          else if (Math.abs(dy) > 14) mode = isLeft(startX) ? "brightness" : "volume";
+          if (mode) moved = true;
         }
 
-        if (gestureMode === "seek") {
-          const r = wrap.getBoundingClientRect();
-          const pct = dx / r.width;
-          const target = clamp(startTime + pct * (v.duration || 0), 0, v.duration || 0);
-          showInd("◀▶", formatTime(target));
-        } else if (gestureMode === "volume") {
-          const delta = -dy / 200;
-          v.volume = clamp(startVolume + delta, 0, 1);
+        if (mode === "seek") {
+          var r = stage.getBoundingClientRect();
+          var pct = dx / r.width;
+          var target = clamp(startTime + pct * (v.duration || 0), 0, v.duration || 0);
+          showInd("◀▶", fmtTime(target));
+        } else if (mode === "volume") {
+          var delta = -dy / 200;
+          v.volume = clamp(startVol + delta, 0, 1);
           v.muted = false;
-          showInd("🔊", Math.round(v.volume * 100) + "%");
-        } else if (gestureMode === "brightness") {
-          const delta = -dy / 200;
-          const val = clamp(startBrightness + delta * 100, 20, 200);
-          this.dom.videoPlayer.style.filter =
-            "brightness(" + val + "%) " + (this.dom.videoPlayer.style.filter.replace(/brightness\([^)]*\)\s*/, "") || "");
-          showInd("☀", Math.round(val) + "%");
+          showInd("صدا", Math.round(v.volume * 100) + "%");
+        } else if (mode === "brightness") {
+          var d2 = -dy / 200;
+          var b = clamp(startBri + d2 * 100, 20, 200);
+          v.style.filter = "brightness(" + b + "%) " +
+            (self.dom.fContrast ? "contrast(" + self.dom.fContrast.value + "%)" : "");
+          showInd("روشنایی", Math.round(b) + "%");
         }
       }, { passive: true });
 
-      on(wrap, "touchend", () => {
-        if (gestureMode === "seek") {
-          const r = wrap.getBoundingClientRect();
-          const pct = (this._lastTouchX || startX - startX) / r.width;
+      on(stage, "touchend", function () {
+        if (mode === "seek") {
+          var r = stage.getBoundingClientRect();
+          // اعمال آخرین موقعیت
+          var dx = (self._lastDx || 0);
+          var pct = dx / r.width;
+          v.currentTime = clamp(startTime + pct * (v.duration || 0), 0, v.duration || 0);
         }
-        gestureMode = null;
-        setTimeout(hideInd, 400);
+        if (!moved) {
+          // tap ساده
+          // اگه روی دکمه‌ها نیست، HUD رو toggle کن
+        }
+        mode = null;
+        setTimeout(hideInd, 350);
       });
     },
 
-    /* =================================================
-       کانتکست منو
-       ================================================= */
-    openContextMenu(x, y, index, isPhoto) {
-      const menu = this.dom.contextMenu;
-      menu.classList.remove("hidden");
-      menu.style.left = Math.min(x, window.innerWidth - 200) + "px";
-      menu.style.top = Math.min(y, window.innerHeight - 180) + "px";
-      requestAnimationFrame(() => menu.classList.add("show"));
-      this._ctxTarget = { index: index, isPhoto: !!isPhoto };
-    },
-
-    closeContextMenu() {
-      this.dom.contextMenu.classList.remove("show");
-      setTimeout(() => this.dom.contextMenu.classList.add("hidden"), 180);
-    },
-
-    bindContextMenu() {
-      $$(".ctx-item", this.dom.contextMenu).forEach((b) => {
-        on(b, "click", () => {
-          const action = b.dataset.ctx;
-          const t = this._ctxTarget || {};
-          if (t.isPhoto) {
-            const item = this._contextPhoto;
-            if (!item) return;
-            if (action === "open-photo") this.openPhotoByItem(item);
-            if (action === "remove" || action === "delete") {
-              const i = this.gallery.indexOf(item);
-              if (i >= 0) {
-                URL.revokeObjectURL(item.url);
-                this.gallery.splice(i, 1);
-                this.renderGallery();
-              }
-            }
-          } else if (typeof t.index === "number" && t.index >= 0) {
-            const item = this.playlist[t.index];
-            if (!item) return;
-            if (action === "play") this.playIndex(t.index);
-            if (action === "open-photo") this.openPhotoByItem(item);
-            if (action === "remove") {
-              URL.revokeObjectURL(item.url);
-              this.playlist.splice(t.index, 1);
-              if (this.currentIndex === t.index) {
-                this.currentIndex = -1;
-                this.dom.videoPlayer.removeAttribute("src");
-                this.dom.videoPlayer.load();
-                this.updatePlayerUI();
-              }
-              this.renderPlaylist();
-            }
-            if (action === "delete") {
-              URL.revokeObjectURL(item.url);
-              this.playlist.splice(t.index, 1);
-              if (this.currentIndex === t.index) {
-                this.currentIndex = -1;
-                this.dom.videoPlayer.removeAttribute("src");
-                this.dom.videoPlayer.load();
-                this.updatePlayerUI();
-              }
-              this.renderPlaylist();
-              toast("حذف شد", "info");
-            }
-          }
-          this.closeContextMenu();
-        });
-      });
-    },
-
-    bindContextMenuGlobal() {
-      on(document, "click", (e) => {
-        if (!e.target.closest("#contextMenu")) this.closeContextMenu();
-      });
-      on(document, "scroll", () => this.closeContextMenu(), true);
-    },
-
-    /* =================================================
-       helpers
-       ================================================= */
-    revokeAll() {
-      this.playlist.forEach((p) => { try { URL.revokeObjectURL(p.url); } catch (e) {} });
-      this.gallery.forEach((g) => { try { URL.revokeObjectURL(g.url); } catch (e) {} });
-    },
-
-    updatePlayerUI() {
-      const v = this.dom.videoPlayer;
-      const hasVideo = !!v.src;
-      if (this.dom.videoTitle) this.dom.videoTitle.textContent = hasVideo
-        ? (this.playlist[this.currentIndex] || {}).name || ""
-        : "هیچ ویدیویی پخش نمی‌شه";
-      if (this.dom.videoMeta) this.dom.videoMeta.textContent = hasVideo
-        ? formatBytes((this.playlist[this.currentIndex] || {}).size || 0)
-        : "";
-      this.updateTimeDisplay();
-      this.renderBookmarksOnTimeline();
+    /* =============================================
+       Helpers
+       ============================================= */
+    revokeAll: function () {
+      this.playlist.forEach(function (p) { try { URL.revokeObjectURL(p.url); } catch (e) {} });
+      this.gallery.forEach(function (g) { try { URL.revokeObjectURL(g.url); } catch (e) {} });
     }
-
   };
+
+  /* =====================================================
+     کمکی - hex به rgb
+     ===================================================== */
+  function hexToRgb(hex) {
+    hex = (hex || "#000000").replace("#", "");
+    if (hex.length === 3) {
+      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    }
+    var n = parseInt(hex, 16);
+    var r = (n >> 16) & 255;
+    var g = (n >> 8) & 255;
+    var b = n & 255;
+    return r + "," + g + "," + b;
+  }
 
   /* =====================================================
      راه‌اندازی
      ===================================================== */
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => App.init());
+    document.addEventListener("DOMContentLoaded", function () { App.init(); });
   } else {
     App.init();
   }
